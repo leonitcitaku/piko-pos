@@ -165,7 +165,9 @@ function Shell({ user, setUser, cafe }) {
     return () => { clearTimeout(timer); evs.forEach((e) => window.removeEventListener(e, reset)); };
   }, [idleSec, logout]);
 
-  const app = { user, boss, isPc: isPc(), info, reloadInfo: loadInfo, logout, afterAction: () => { if (isPc() && info?.logout_after_order) setTimeout(logout, 900); } };
+  // From Manager > Tables: show the floor as a plan and start drawing it.
+  const openPlan = () => { try { localStorage.setItem('floor_view', 'plan'); } catch { /* private window */ } window.__posStartDrawing = true; setView('floor'); };
+  const app = { user, boss, isPc: isPc(), info, reloadInfo: loadInfo, logout, afterAction: () => {}, openPlan };   // after an order the user stays logged in, always
   useKeys((e) => {
     if (e.key === 'F12') { e.preventDefault(); logout(); return; }
     // Esc walks back one step at a time. From My session or Manager the step back is the tables screen,

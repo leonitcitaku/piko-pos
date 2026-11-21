@@ -70,15 +70,15 @@ export function Floor({ app }) {
     <section className="floor">
       {err && <p className="notice bad">{err}</p>}
       {typed && <div className="typed-chip">{t('Table')} <b>{typed}</b><span>↵</span></div>}
+      <div className="seg floor-view" role="group" aria-label={t('Floor view')}>
+        <button className={mode === 'grid' ? 'on' : ''} onClick={() => pickMode('grid')}>▦ {t('Tables grid')}</button>
+        <button className={mode === 'plan' ? 'on' : ''} onClick={() => pickMode('plan')}>◰ {t('Floor plan')}</button>
+      </div>
       <div className="zones" role="tablist">
         {data.zones.map((z) => {
           const open = data.tables.filter((x) => x.zone_id === z.id && x.order_id).length;
           return <button key={z.id} role="tab" aria-selected={zone === z.id} className={zone === z.id ? 'on' : ''} onClick={() => setZone(z.id)}>{z.name}{open > 0 && <i>{open}</i>}</button>;
         })}
-        <span className="view-toggle">
-          <button className={mode === 'grid' ? 'on' : ''} onClick={() => pickMode('grid')} title={t('Grid')} aria-label={t('Grid')}>▦</button>
-          <button className={mode === 'plan' ? 'on' : ''} onClick={() => pickMode('plan')} title={t('Plan')} aria-label={t('Plan')}>◰</button>
-        </span>
       </div>
       {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} onDrawing={setDrawing} /> : (
       <div className="tiles">

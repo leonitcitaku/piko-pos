@@ -44,6 +44,9 @@ export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) 
   });
 
   const start = () => { setPos({}); setItems(saved.map((x) => ({ ...x, key: 'k' + nextKey.current++ }))); setPicked(null); setEdit(true); };
+  // Sent here by "Draw the floor plan" in Manager > Tables: open straight in drawing mode.
+  useEffect(() => { if (window.__posStartDrawing && app.boss) { window.__posStartDrawing = false; start(); } }, []);
+  const neverDrawn = !saved.length && tables.every((x) => x.px == null);
   const save = async () => {
     setBusy(true);
     try {
@@ -85,7 +88,7 @@ export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) 
     <div className={'plan' + (edit ? ' editing' : '')}>
       {app.boss && (
         <div className="plan-tools noprint">
-          {!edit ? <button className="btn" onClick={start}>✎ {t('Draw the plan')}</button> : (
+          {!edit ? <>{neverDrawn && <p className="notice">{t('No plan drawn for this area yet. Press Draw the plan and drag the tables where they stand.')}</p>}<button className="btn primary" onClick={start}>✎ {t('Draw the plan')}</button></> : (
             <>
               <div className="row wrap">
                 {Object.keys(NEW).map((k) => <button key={k} className="btn" onClick={() => addItem(k)}>+ {t(KIND_NAME[k])}</button>)}

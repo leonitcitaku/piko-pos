@@ -211,8 +211,6 @@ td.neg { color: var(--brick); font-weight: 600; } b.neg { color: var(--brick); }
 .backups { margin-top: 18px; }
 
 /* ---- the drawn floor plan ---- */
-.view-toggle { margin-left: auto; display: inline-flex; gap: 4px; }
-.zones .view-toggle button { min-height: 44px; min-width: 44px; padding: 0; justify-content: center; border-radius: 10px; font-size: 1.1rem; }
 .split.with-plan { grid-template-columns: minmax(420px, 58%) 1fr; }
 .plan { display: flex; flex-direction: column; min-height: 0; }
 .plan-tools { display: grid; gap: 8px; margin-bottom: 10px; } .plan-picked { padding: 6px 8px; background: var(--mint); border-radius: 10px; align-items: center; }
@@ -259,3 +257,4 @@ kbd { font: 600 .78rem/1 ui-monospace, Menlo, Consolas, monospace; padding: 3px 
   .qr-print small { font-size: 12pt; color: #444; }
 }
 .keep-address { margin: 14px 0; }
+.floor-view { display: flex; width: 100%; margin-bottom: 10px; } .floor-view button { flex: 1; }

@@ -164,7 +164,7 @@ export function registerRoutes(r, cfg) {
   });
   r.put('/api/admin/settings', { roles: BOSS }, (c) => {
     const managerKeys = ['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width'];
-    const ownerKeys = [...managerKeys, 'cafe_name', 'cancel_window_sec', 'backup_dir', 'idle_lock_sec', 'logout_after_order', 'fiscal_mode', 'backups_keep', 'login_idle_days', 'late_after_sec'];
+    const ownerKeys = [...managerKeys, 'cafe_name', 'cancel_window_sec', 'backup_dir', 'idle_lock_sec', 'fiscal_mode', 'backups_keep', 'login_idle_days', 'late_after_sec'];
     const ranges = { cancel_window_sec: [0, 3600], idle_lock_sec: [10, 3600], backups_keep: [5, 365], login_idle_days: [1, 365], late_after_sec: [10, 3600] };
     const allowed = c.user.role === 'owner' ? ownerKeys : managerKeys;
     for (const [k, v] of Object.entries(c.body || {})) {
@@ -172,7 +172,6 @@ export function registerRoutes(r, cfg) {
       if (k === 'fiscal_mode' && v !== 'off') throw bad('fiscal_not_ready', 'No fiscal driver is installed yet');
       if (k === 'printer_mode' && !['off', 'network', 'windows', 'winraw', 'file'].includes(v)) throw bad('bad_value', k);
       if (k === 'ticket_width' && !['32', '42', '48'].includes(String(v))) throw bad('bad_value', k);
-      if (k === 'logout_after_order' && !['0', '1'].includes(String(v))) throw bad('bad_value', k);
       if (ranges[k]) { const n = Number(v); if (!Number.isInteger(n) || n < ranges[k][0] || n > ranges[k][1]) throw bad('bad_value', `${k} must be between ${ranges[k][0]} and ${ranges[k][1]}`); }
       setSetting(k, String(v).slice(0, 200));
     }
@@ -244,7 +243,7 @@ export function registerRoutes(r, cfg) {
     const last = Number(getSetting('last_event_at', '0'));
     if (!BOSS.includes(c.user.role)) {
       return { cafe_name: getSetting('cafe_name', 'Cafe'), clock_wrong: !!last && now() < last - 5 * 60_000, day_open: !!day, catch_up: !!day?.catch_up,
-        printer: { ok: printerState.ok, mode: getSetting('printer_mode', 'off'), error: printerState.ok ? null : 'problem' }, idle_lock_sec: Number(getSetting('idle_lock_sec', '60')), logout_after_order: getSetting('logout_after_order', '0') === '1' };
+        printer: { ok: printerState.ok, mode: getSetting('printer_mode', 'off'), error: printerState.ok ? null : 'problem' }, idle_lock_sec: Number(getSetting('idle_lock_sec', '60')) };
     }
     return {
       version: cfg.version, port: cfg.port, urls: lanUrls(cfg.port), cafe_name: getSetting('cafe_name', 'Cafe'), clock: now(),
@@ -255,7 +254,7 @@ export function registerRoutes(r, cfg) {
       // The phones' address only stays the same if the router always gives this PC the same IP. The card's
       // MAC is what the router's "address reservation" asks for.
       nets: Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list || []).filter((a) => a.family === 'IPv4' && !a.internal).map((a) => ({ name, address: a.address, mac: a.mac }))),
-      idle_lock_sec: Number(getSetting('idle_lock_sec', '60')), logout_after_order: getSetting('logout_after_order', '0') === '1', data_dir: dataDir, fiscal_mode: getSetting('fiscal_mode', 'off'),
+      idle_lock_sec: Number(getSetting('idle_lock_sec', '60')), data_dir: dataDir, fiscal_mode: getSetting('fiscal_mode', 'off'),
     };
   });
   r.get('/api/system/qr.svg', { roles: BOSS }, (c) => ({ __raw: qrSvg(c.query.url || lanUrls(cfg.port)[0] || `http://localhost:${cfg.port}`), type: 'image/svg+xml' }));

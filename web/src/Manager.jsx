@@ -19,7 +19,7 @@ export function Manager({ app }) {
         {tab === 'Report' && <ReportTab />}
         {tab === 'Menu' && <MenuTab app={app} />}
         {tab === 'Staff' && <StaffTab app={app} />}
-        {tab === 'Tables' && <TablesTab />}
+        {tab === 'Tables' && <TablesTab app={app} />}
         {tab === 'Settings' && <SettingsTab app={app} />}
         {tab === 'System' && <SystemTab app={app} />}
         {tab === 'Log' && <LogTab />}
@@ -340,7 +340,7 @@ function StaffTab({ app }) {
 }
 
 // ---------------------------------------------------------------- Tables
-function TablesTab() {
+function TablesTab({ app }) {
   const [d, load] = useLoad('/api/admin/all');
   const act = useAct();
   const [name, setName] = useState('');
@@ -348,6 +348,8 @@ function TablesTab() {
   const save = async (entity, id, patch) => { await act(() => put(`/api/admin/${entity}/${id}`, patch)); load(); };
   return (
     <>
+      <div className="row between wrap"><p className="muted">{t('Place the tables where they really stand, with the bar, chairs and walls around them.')}</p>
+        <button className="btn primary" onClick={app.openPlan}>◰ {t('Draw the floor plan')}</button></div>
       {d.zones.map((z) => (
         <section key={z.id} className={z.active ? '' : 'dim'}>
           <div className="row between"><Inline value={z.name} className="h2" onSave={(v) => save('zones', z.id, { name: v })} />
@@ -394,12 +396,11 @@ function SettingsTab({ app }) {
           <Field label={t('Cafe name')}><input className="input" value={f.cafe_name} onChange={set('cafe_name')} /></Field>
           <Field label={t('Free cancel window, seconds')}><input className="input" inputMode="numeric" value={f.cancel_window_sec} onChange={set('cancel_window_sec')} /></Field>
           <Field label={t('Lock the PC after idle, seconds')}><input className="input" inputMode="numeric" value={f.idle_lock_sec} onChange={set('idle_lock_sec')} /></Field>
-          <Field label={t('Log out after each order (shared PC)')}><select className="input" value={f.logout_after_order || '0'} onChange={set('logout_after_order')}><option value="0">{t('No, stay logged in')}</option><option value="1">{t('Yes')}</option></select></Field>
           <Field label={t('Mark a ticket late after, seconds')}><input className="input" inputMode="numeric" value={f.late_after_sec ?? '60'} onChange={set('late_after_sec')} /></Field>
           <Field label={t('Log a device out after days unused')}><input className="input" inputMode="numeric" value={f.login_idle_days ?? '14'} onChange={set('login_idle_days')} /></Field>
           <Field label={t('Backups to keep')}><input className="input" inputMode="numeric" value={f.backups_keep ?? '30'} onChange={set('backups_keep')} /></Field>
           <Field label={t('Second backup folder (USB stick)')}><input className="input" value={f.backup_dir} onChange={set('backup_dir')} placeholder="E:\\pos-backup" /></Field>
-          <button className="btn primary" onClick={() => save(['cafe_name', 'cancel_window_sec', 'idle_lock_sec', 'logout_after_order', 'late_after_sec', 'login_idle_days', 'backups_keep', 'backup_dir'])}>{t('Save')}</button>
+          <button className="btn primary" onClick={() => save(['cafe_name', 'cancel_window_sec', 'idle_lock_sec', 'late_after_sec', 'login_idle_days', 'backups_keep', 'backup_dir'])}>{t('Save')}</button>
         </>
       )}
     </div>
