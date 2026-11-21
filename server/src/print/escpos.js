@@ -44,8 +44,10 @@ export function ticketLines(job) {
   // A reprint keeps its original kind (so a cancel stays a cancel) and carries the copy flag in its content.
   // Rows written before that change still have kind 'copy', which renders as a copy of an order.
   const isCopy = job.kind === 'copy' || c.copy === true;
-  if (job.was_late) { push('*** VONESE / LATE ***', 'big'); push('Derguar ne ' + hhmm(job.original_time), 'big'); }
-  if (isCopy) push('*** KOPJE / COPY ***', 'big');
+  // Both languages, one per line: a 'big' line is double width, so it only fits 16 characters and
+  // "*** VONESE / LATE ***" would wrap to a ragged orphan line on the paper.
+  if (job.was_late) { push('*** VONESE ***', 'big'); push('*** LATE ***', 'big'); push('Derguar ne ' + hhmm(job.original_time), 'big'); }
+  if (isCopy) { push('*** KOPJE ***', 'big'); push('*** COPY ***', 'big'); }
   push(TITLES[job.kind] || 'POROSI', 'center');
   if (job.kind === 'test') { push(c.cafe || 'Cafe', 'big'); push('Printeri punon', 'center'); push(hhmm(job.original_time), 'center'); return out; }
   push('TAVOLINA ' + c.table, 'big');
