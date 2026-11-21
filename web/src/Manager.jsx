@@ -408,6 +408,29 @@ function SettingsTab({ app }) {
 }
 
 // ---------------------------------------------------------------- System
+// Only inside the desktop application: what Windows will do about sleep, and a switch to stop it for good.
+function AlwaysOn() {
+  const [p, setP] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useUi();
+  useEffect(() => { window.pos.getPower().then(setP).catch(() => {}); }, []);
+  if (!p || !p.supported) return null;
+  const mins = (m) => (m === 0 ? t('never') : `${m} min`);
+  return (
+    <section className="autostart">
+      <h2>{t('Keep this PC always on')}</h2>
+      <p className={'notice ' + (p.awake ? '' : 'warn')}>
+        {p.awake ? t('Windows will not put this PC to sleep.')
+          : `${t('Windows will put this PC to sleep')}: ${t('plugged in')} ${mins(p.sleep_ac_min)}, ${t('on battery')} ${mins(p.sleep_dc_min)}${p.lid_sleeps ? ', ' + t('and when the lid is closed') : ''}.`}
+      </p>
+      <div className="row between wrap">
+        <p className="muted">{t('Turns off sleep, hibernate and sleeping on lid close in Windows, and checks them again at every start. Turning it off puts back what was there before.')}</p>
+        <button className={'btn ' + (p.on ? 'primary' : '')} disabled={busy} onClick={async () => { setBusy(true); try { setP(await window.pos.setPower(!p.on)); toast(t('Saved')); } catch { toast(t('problem'), 'bad'); } setBusy(false); }}>{p.on ? t('On') : t('Off')}</button>
+      </div>
+    </section>
+  );
+}
+
 // Only inside the desktop application on the POS computer: whether it opens by itself when the PC is turned on.
 function Autostart() {
   const [on, setOn] = useState(null);
@@ -462,6 +485,7 @@ function SystemTab({ app }) {
         <div><dt>{t('Data folder')}</dt><dd>{i.data_dir}</dd></div>
       </dl>
       {window.pos?.getAutostart && <Autostart />}
+      {window.pos?.getPower && <AlwaysOn />}
       <Backups owner={app.user.role === 'owner'} />
       {app.user.role === 'owner' && (
         <section className="danger-zone">

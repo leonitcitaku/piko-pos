@@ -2,8 +2,8 @@
 // It starts the POS server as its own process on the bundled Node, keeps it alive,
 // shows Order mode and the manager area in a window, and lives in the tray when the window is closed.
 // NOTE: written to plan but not yet run on Windows. See README, "What is tested and what is not".
-const { app, BrowserWindow, Tray, Menu, clipboard, dialog, ipcMain, nativeImage, shell } = require('electron');
-const { fork } = require('node:child_process');
+const { app, BrowserWindow, Tray, Menu, clipboard, dialog, ipcMain, nativeImage, shell, powerSaveBlocker } = require('electron');
+const { fork, execFile } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -103,6 +103,61 @@ ipcMain.handle('win-minimise', () => { if (win) { if (win.isKiosk()) win.setKios
 // Start with the PC: on by default, and a switch in the System tab from then on. The choice is remembered,
 // so an update or a restart never turns it back on behind the owner's back.
 const autostartFile = () => path.join(app.getPath('userData'), 'autostart-chosen.json');
+// ---------- keep this PC awake ----------
+// A till that falls asleep takes every phone down with it. Two layers:
+//  1. While the POS is open it asks Windows not to sleep from sitting idle. Automatic, changes no setting.
+//  2. "Always on", a switch the owner turns on: sleep and hibernate set to never and the lid set to do nothing,
+//     in the Windows power plan. Checked again at every start, in case something turned sleep back on.
+//     What was there before is remembered, and turning the switch off puts it back.
+const SLEEP_SETTINGS = [['SUB_SLEEP', 'STANDBYIDLE'], ['SUB_SLEEP', 'HIBERNATEIDLE'], ['SUB_BUTTONS', 'LIDACTION']];
+const powerFile = () => path.join(app.getPath('userData'), 'always-on.json');
+const powercfg = (args) => new Promise((resolve) => execFile('powercfg', args, { windowsHide: true, timeout: 15000 }, (err, out) => resolve(err ? '' : String(out))));
+async function readSleep() {
+  if (process.platform !== 'win32') return null;
+  const out = {};
+  for (const [sub, key] of SLEEP_SETTINGS) {
+    const txt = await powercfg(['/query', 'SCHEME_CURRENT', sub, key]);
+    const m = [...txt.matchAll(/Power Setting Index:\s*0x([0-9a-f]{8})/gi)].map((x) => parseInt(x[1], 16));
+    if (m.length < 2) return null;                       // could not read this Windows: say so rather than guess
+    out[key] = { ac: m[m.length - 2], dc: m[m.length - 1] };
+  }
+  return out;
+}
+const neverSleeps = (s) => !!s && SLEEP_SETTINGS.every(([, key]) => s[key].ac === 0 && s[key].dc === 0);
+async function writeSleep(values) {
+  for (const [sub, key] of SLEEP_SETTINGS) {
+    await powercfg(['/setacvalueindex', 'SCHEME_CURRENT', sub, key, String(values[key].ac)]);
+    await powercfg(['/setdcvalueindex', 'SCHEME_CURRENT', sub, key, String(values[key].dc)]);
+  }
+  await powercfg(['/setactive', 'SCHEME_CURRENT']);
+}
+const ZERO = Object.fromEntries(SLEEP_SETTINGS.map(([, key]) => [key, { ac: 0, dc: 0 }]));
+const readChoice = () => { try { return JSON.parse(fs.readFileSync(powerFile(), 'utf8')); } catch { return { on: false }; } };
+async function powerStatus() {
+  const now = await readSleep(), choice = readChoice();
+  return { supported: !!now, on: !!choice.on, awake: neverSleeps(now),
+    sleep_ac_min: now ? Math.round(now.STANDBYIDLE.ac / 60) : null, sleep_dc_min: now ? Math.round(now.STANDBYIDLE.dc / 60) : null,
+    lid_sleeps: now ? (now.LIDACTION.ac !== 0 || now.LIDACTION.dc !== 0) : null };
+}
+ipcMain.handle('power-get', () => powerStatus());
+ipcMain.handle('power-set', async (_e, on) => {
+  const now = await readSleep(), choice = readChoice();
+  if (!now) return powerStatus();
+  if (on) {
+    const before = choice.on && choice.before ? choice.before : now;      // keep the very first "before", not our own zeros
+    fs.writeFileSync(powerFile(), JSON.stringify({ on: true, before }));
+    await writeSleep(ZERO);
+  } else {
+    if (choice.before) await writeSleep(choice.before);
+    fs.writeFileSync(powerFile(), JSON.stringify({ on: false }));
+  }
+  return powerStatus();
+});
+// At every start: if the owner asked for always on and Windows has sleep enabled again, turn it back off.
+async function enforceAlwaysOn() {
+  try { if (readChoice().on && !neverSleeps(await readSleep())) await writeSleep(ZERO); } catch { /* never stop the POS over this */ }
+}
+
 ipcMain.handle('autostart-get', () => (packaged ? app.getLoginItemSettings().openAtLogin : false));
 ipcMain.handle('autostart-set', (_e, on) => {
   app.setLoginItemSettings({ openAtLogin: !!on });
@@ -123,6 +178,8 @@ ipcMain.handle('quit-with-pin', async (_e, pin) => {
 
 app.whenReady().then(() => {
   if (packaged && !fs.existsSync(autostartFile())) app.setLoginItemSettings({ openAtLogin: true });   // start with Windows, until the owner says otherwise
+  powerSaveBlocker.start('prevent-app-suspension');   // no idle sleep while the POS is open
+  enforceAlwaysOn();
   const iconPath = path.join(__dirname, 'tray.png');
   tray = new Tray(fs.existsSync(iconPath) ? iconPath : nativeImage.createEmpty());
   tray.on('click', showWindow);
