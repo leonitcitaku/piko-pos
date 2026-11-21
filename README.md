@@ -18,23 +18,36 @@ To see bar tickets without a printer: Manager, Settings, Printer, "Save to files
 
 ## What is tested and what is not
 
-**Tested here, for real:**
+**Tested for real:**
 
-- The server, with 22 automated tests (`npm test`). They cover the plan's test list: repeated sends, two waiters on one table,
-  six devices at once, printer off and LATE tickets, COPY reprints, skipping a ticket, the 2 minute cancel window, split bills,
-  on the house, discount, sold out, move, merge, moving items, floats, payouts, settlement during service, day close rules,
-  backup and restore, catch up mode, restart with logins intact, clock guard, PIN lockout, QR code, owner reset.
-- The web app, driven in a real Chrome at phone size and PC size: first run, login, ordering, extras and notes, sending,
-  split payment with change, the shared PC returning to the name list, and every manager tab.
+- The server, with 31 automated tests (`npm test`): repeated sends, two waiters on one table, six devices at once, printer
+  off and LATE tickets, COPY reprints, cancelling part of a line, split bills, on the house, discount, sold out, move, merge,
+  floats, payouts, settlement, day close, backup, restore and upload, catch up mode, clock guard, PIN rules and lockout,
+  idle logins, staff lockdown, period reports, staff profiles, the floor plan, the shift slip.
+- The installer and the desktop app, on a Windows 10 laptop (build 10240): install, first start, port 80, the firewall
+  rule, start with the PC, crash recovery of the built in server, surviving a hard power off with data intact.
+- The web app in a browser at phone and PC size, by touch and by keyboard: login, ordering, paying, the manager tabs,
+  the floor plan editor.
+- Network printing against a fake printer that misbehaves on purpose (drops the connection, reports no paper), and on
+  paper through `tools/escpos-to-paper.py`, which turns tickets into pages for an ordinary office printer.
 
-**Written but NOT tested, because it needs Windows and real hardware:**
+**Not tested, because the hardware was not there:**
 
-- `desktop/` (the Electron shell: window, tray, start with Windows, quit with PIN) and the installer config.
-- Printing to a real thermal printer. Network printing was tested against a fake printer on port 9100.
-  The Windows USB mode (writing to a shared printer) has never touched a real printer.
-- Paper out detection. It depends on the printer answering a status request, and many cheap ones do not.
+- A real thermal printer: paper width, the cut, double width text, and whether it answers the paper status request.
+- Printing to a Windows printer by name (Settings, "Printer installed on this PC"). The error path is tested, real output is not.
+- The floor plan editor by finger on a touch screen. It was driven with a mouse.
+- The "keep this PC always on" switch changing Windows power settings. Reading them is tested.
 
-Treat those three as the first things to check on a real Windows PC with the real printer.
+## Install at the cafe
+
+1. Copy `Cafe POS Setup x.y.z.exe` to a USB stick and run it on the cafe PC. Windows shows "Windows protected your PC"
+   because the installer is unsigned: More info, then Run anyway.
+2. Click through, say Yes to the Windows prompt, leave "Run Cafe POS" ticked.
+3. Create the owner (6 digit PIN), then staff in Manager, Staff (4 digits for waiters and bartenders, 6 for managers).
+4. In Manager, System: print the QR code for the phones, and turn on "Keep this PC always on".
+5. In the router, reserve the PC's address (the System tab shows the IP and MAC to use) so the link never changes.
+
+Press F1 in the app for every keyboard shortcut.
 
 ## Build the Windows installer
 
@@ -94,6 +107,6 @@ On Windows the installed app keeps its data in `C:\ProgramData\CafePOS`: `pos.db
 
 ## Roles
 
-- **Waiter, bartender:** take orders, take payment, see their own session. A bartender can also mark items sold out.
+- **Waiter, bartender:** the tables only: take orders, take payment. They see no cash totals, sessions or reports.
 - **Manager:** everything above plus the day, settlement, payouts, tickets, reports, menu names, tables, printer settings.
 - **Owner:** everything, plus prices, staff and PINs, other settings, and wiping test data.
