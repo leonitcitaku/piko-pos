@@ -36,6 +36,7 @@ export function Floor({ app }) {
   // Type a table's name and press Enter to open it. The chip shows exactly what Enter will use,
   // and clears itself after a few seconds of no typing, so nothing stale is ever acted on.
   const [typed, setTyped] = useState('');
+  const [drawing, setDrawing] = useState(false);
   useEffect(() => { if (!typed) return undefined; const h = setTimeout(() => setTyped(''), 6000); return () => clearTimeout(h); }, [typed]);
   useKeys((e) => {
     if (!data) return;
@@ -49,7 +50,12 @@ export function Floor({ app }) {
     }
     if (/^[\p{L}\p{N}]$/u.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); setTyped((x) => (x + e.key).slice(0, 12)); return; }
     if (e.key === 'Backspace' && typed) { e.preventDefault(); setTyped((x) => x.slice(0, -1)); return; }
-    if (e.key === 'Escape' && typed) { e.preventDefault(); setTyped(''); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (typed) setTyped('');                 // first step back: forget what was typed
+      else if (!drawing) app.logout();         // nothing left to go back from: leave
+      return;                                  // while drawing the plan, the plan handles Esc itself
+    }
     if (e.key === 'Enter' && typed) {
       e.preventDefault();
       const want = typed.toLowerCase(), hit = data.tables.find((x) => x.name.toLowerCase() === want);
@@ -74,7 +80,7 @@ export function Floor({ app }) {
           <button className={mode === 'plan' ? 'on' : ''} onClick={() => pickMode('plan')} title={t('Plan')} aria-label={t('Plan')}>◰</button>
         </span>
       </div>
-      {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} /> : (
+      {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} onDrawing={setDrawing} /> : (
       <div className="tiles">
         {data.tables.filter((x) => x.zone_id === zone).map((x) => {
           const state = !x.order_id ? 'free' : x.waiter_id === app.user.id ? 'mine' : 'theirs';

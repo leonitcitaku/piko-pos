@@ -137,7 +137,7 @@ const sq = {
   'Everywhere': 'Kudo',
   'This list of shortcuts': 'Kjo listë e shkurtoreve',
   'Esc': 'Esc',
-  'Close the dialog, or go back': 'Mbyll dritaren, ose kthehu',
+  'Go back one step. On the tables screen with nothing open, log out': 'Kthehu një hap. Te tavolinat, kur s\'ka asgjë të hapur, dil',
   'F12': 'F12',
   'Lock the screen': 'Mbyll ekranin',
   'Alt 1 / 2 / 3': 'Alt 1 / 2 / 3',

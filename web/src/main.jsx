@@ -165,9 +165,12 @@ function Shell({ user, setUser, cafe }) {
     return () => { clearTimeout(timer); evs.forEach((e) => window.removeEventListener(e, reset)); };
   }, [idleSec, logout]);
 
-  const app = { user, boss, isPc: isPc(), info, reloadInfo: loadInfo, afterAction: () => { if (isPc()) setTimeout(logout, 900); } };
+  const app = { user, boss, isPc: isPc(), info, reloadInfo: loadInfo, logout, afterAction: () => { if (isPc()) setTimeout(logout, 900); } };
   useKeys((e) => {
     if (e.key === 'F12') { e.preventDefault(); logout(); return; }
+    // Esc walks back one step at a time. From My session or Manager the step back is the tables screen,
+    // which is home; the tables screen itself decides when Esc means log out.
+    if (e.key === 'Escape' && view !== 'floor' && !modalsOpen() && !typingIn(e)) { e.preventDefault(); setView('floor'); return; }
     if (e.altKey && !e.ctrlKey && boss && ['1', '2', '3'].includes(e.key)) { e.preventDefault(); setView({ 1: 'floor', 2: 'me', 3: 'manager' }[e.key]); }
   });
   const switchLang = async () => {

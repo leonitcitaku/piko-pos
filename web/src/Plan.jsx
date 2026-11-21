@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { post, put, money } from './api.js';
 import { t } from './i18n.js';
-import { useUi } from './ui.jsx';
+import { useUi, useKeys, typingIn, modalsOpen } from './ui.jsx';
 import { errText } from './util.js';
 
 const SNAP = 10;
@@ -14,9 +14,10 @@ const KIND_NAME = { bar: 'Bar', chair: 'Chair', wall: 'Wall', label: 'Text', pla
 // Tables that were never placed line up in rows, so a new plan starts tidy instead of in a heap.
 const autoPlace = (i) => ({ px: 20 + (i % 4) * 130, py: 20 + Math.floor(i / 4) * 130, pw: 110, ph: 110 });
 
-export function PlanView({ app, data, zone, sel, onSelect, reload }) {
+export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) {
   const ui = useUi();
   const [edit, setEdit] = useState(false);
+  useEffect(() => { onDrawing?.(edit); return () => onDrawing?.(false); }, [edit]);
   const [pos, setPos] = useState({});          // table id -> { px, py, pw, ph, shape } while drawing
   const [items, setItems] = useState([]);      // decorations while drawing
   const [picked, setPicked] = useState(null);  // 't:12' or 'i:key'
@@ -36,6 +37,11 @@ export function PlanView({ app, data, zone, sel, onSelect, reload }) {
   const height = Math.max(560, ...placed.map((x) => x.py + x.ph + 200), ...shown.map((x) => x.y + x.h + 200));
 
   useEffect(() => { setEdit(false); setPicked(null); }, [zone]);
+  useKeys((e) => {
+    if (!edit || e.key !== 'Escape' || modalsOpen() || typingIn(e)) return;
+    e.preventDefault();
+    if (picked) setPicked(null); else { setEdit(false); }
+  });
 
   const start = () => { setPos({}); setItems(saved.map((x) => ({ ...x, key: 'k' + nextKey.current++ }))); setPicked(null); setEdit(true); };
   const save = async () => {

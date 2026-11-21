@@ -127,7 +127,7 @@ export class ErrorBoundary extends React.Component {
 
 // F1 anywhere, or ? when not typing: every shortcut on one screen.
 const KEYS = [
-  ['Everywhere', [['F1', 'This list of shortcuts'], ['Esc', 'Close the dialog, or go back'], ['F12', 'Lock the screen'], ['Alt 1 / 2 / 3', 'Tables, My session, Manager']]],
+  ['Everywhere', [['F1', 'This list of shortcuts'], ['Esc', 'Go back one step. On the tables screen with nothing open, log out'], ['F12', 'Lock the screen'], ['Alt 1 / 2 / 3', 'Tables, My session, Manager']]],
   ['Login', [['1 to 9', 'Pick the person with that number'], ['0 to 9', 'Type the PIN, it logs in by itself'], ['Esc', 'Back to the names']]],
   ['Tables', [['Table name, then Enter', 'Open that table'], ['Page Up / Page Down', 'Next or previous area'], ['F3', 'Switch between grid and plan']]],
   ['Order', [['Letters', 'Find a drink by name'], ['Arrow up / down', 'Choose in the list found'], ['Enter', 'Add the drink found, or send to the bar'], ['0 to 9', 'How many of the next drink'], ['+ / -', 'One more or one less of the last drink'], ['Delete', 'Remove the last drink'], ['F2', 'Take payment'], ['F4', 'More: move, merge, discount, reprint']]],
