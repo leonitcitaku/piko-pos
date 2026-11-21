@@ -71,6 +71,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
   const [cat, setCat] = useState(menu.categories[0]?.id);
   const [send, setSend] = useState('idle');
   const [dlg, setDlg] = useState(null);
+  const [showSent, setShowSent] = useState(false);
   const ids = useRef({ order: uid(), batch: uid() });
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -103,6 +104,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
         if (!alive.current) return;
         setOrder(o); setCart([]); ids.current.batch = uid(); setSend('idle');
         toast(t('Sent')); reload(); app.afterAction();
+        if (!app.isPc) onClose();   // the PC goes back to the name list by itself
         return;
       } catch (e) {
         if (e instanceof NetworkError) { setSend('retrying'); await sleep(2000); if (!alive.current) return; continue; } // same ids: the server ignores a repeat
@@ -138,7 +140,13 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
       </header>
 
       <div className="order-scroll">
-        {order && order.items.length > 0 && (
+        {order && order.items.length > 3 && (
+          <button className="sent-sum" onClick={() => setShowSent((x) => !x)} aria-expanded={showSent}>
+            <b>{live.reduce((n, i) => n + i.qty, 0)} {t('items')} · {money(order.total_cents)}</b>
+            <span>{showSent ? t('Hide') : t('Show')} {showSent ? '▴' : '▾'}</span>
+          </button>
+        )}
+        {order && order.items.length > 0 && (order.items.length <= 3 || showSent) && (
           <ul className="lines">
             {order.items.map((i) => (
               <li key={i.id} className={i.status === 'void' ? 'void' : i.payment_id ? 'paid' : ''}>
@@ -324,6 +332,7 @@ function PayDialog({ app, order, unpaid, onClose, onPaid }) {
           <span className="p">{money(qty[i.id] ? lineCents(i, qty[i.id]) : 0)}</span>
         </li>
       ))}</ul>
+      <div className="payfoot">
       <div className="paytotal"><span>{t('Total')}</span><b>{money(total)}</b></div>
       <div className="row">
         <label className="field grow"><span>{t('Cash received')}</span><input className="input" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} placeholder="0.00" /></label>
@@ -332,6 +341,7 @@ function PayDialog({ app, order, unpaid, onClose, onPaid }) {
       <div className="row">
         <button className="btn" disabled={busy || total <= 0} onClick={() => pay('house')}>{t('On the house')}</button>
         <button className="btn primary big grow" disabled={busy || total <= 0} onClick={() => pay('cash')}>{t('Cash')} · {money(total)}</button>
+      </div>
       </div>
     </Modal>
   );

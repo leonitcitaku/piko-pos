@@ -181,3 +181,9 @@ p { margin: .4rem 0; }
   body { background: #fff; } .shell, .main, .manager, .page { display: block; height: auto; overflow: visible; }
   .grid { border: 0; } .bars .bar-cell i { background: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Order screen: what was already sent folds into one row so the menu stays on top. */
+.sent-sum { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; min-height: 48px; border: 0; border-bottom: 1px solid var(--line); background: var(--mint); text-align: left; }
+.sent-sum span { color: var(--bottle); font-weight: 600; white-space: nowrap; }
+/* Pay dialog: the total and the buttons never scroll out of reach. */
+.payfoot { position: sticky; bottom: 0; margin: 0 -18px -18px; padding: 2px 18px calc(14px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 2px solid var(--ink); }

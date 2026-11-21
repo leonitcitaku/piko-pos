@@ -44,6 +44,8 @@ export function PinPad({ onDone, error, busy }) {
   const ref = useRef(pin); ref.current = pin;
   const press = (d) => setPin((p) => (p.length < 6 ? p + d : p));
   const submit = () => { if (ref.current.length >= 4) { onDone(ref.current); setPin(''); } };
+  // Six digits is the longest a PIN can be, and exactly what a manager or owner has, so there is nothing to wait for.
+  useEffect(() => { if (pin.length === 6 && !busy) submit(); }, [pin]);
   useEffect(() => {
     const k = (e) => { if (/^\d$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') setPin((p) => p.slice(0, -1)); else if (e.key === 'Enter') submit(); };
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
