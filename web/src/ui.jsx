@@ -134,7 +134,7 @@ export class ErrorBoundary extends React.Component {
 const KEYS = [
   ['Everywhere', [['F1', 'This list of shortcuts'], ['Esc', 'Go back one step. On the tables screen with nothing open, log out'], ['F12', 'Lock the screen'], ['Alt 1 / 2 / 3', 'Tables, My session, Manager']]],
   ['Login', [['1 to 9', 'Pick the person with that number'], ['0 to 9', 'Type the PIN, it logs in by itself'], ['Esc', 'Back to the names']]],
-  ['Tables', [['Table name, then Enter', 'Open that table'], ['Page Up / Page Down', 'Next or previous area'], ['F3', 'Switch between grid and plan']]],
+  ['Tables', [['Arrows', 'Move over the tables'], ['Enter', 'Open the highlighted table'], ['Table name, then Enter', 'Open that table'], ['Page Up / Page Down', 'Next or previous area'], ['F3', 'Switch between grid and plan']]],
   ['Order', [['Arrows', 'Move over the drinks'], ['Page Up / Page Down', 'Previous or next category'], ['Enter', 'Add the highlighted drink'], ['Letters', 'Find a drink by name'], ['0 to 9', 'How many of the next drink'], ['Backspace', 'Erase what you typed'], ['+ / -', 'One more or one less of the last drink'], ['Delete', 'Remove the last drink'], ['F2', 'Send to the bar'], ['F3', 'More: move, merge, discount, reprint'], ['F4', 'Take payment']]],
   ['Payment', [['0 to 9', 'Cash received'], ['Enter', 'Paid in cash'], ['F8', 'On the house']]],
 ];

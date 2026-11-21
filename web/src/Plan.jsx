@@ -26,7 +26,7 @@ function bounds(boxes, pad = 30) {
 function Shape({ it }) { return it.kind === 'label' || it.kind === 'bar' ? it.label : null; }
 
 // ---------------------------------------------------------------- the plan staff tap on
-export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) {
+export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing, hot }) {
   const [editing, setEditing] = useState(false);
   const wrap = useRef(null);
   const [width, setWidth] = useState(0);
@@ -56,7 +56,7 @@ export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) 
             <div className="plan-canvas" style={{ width: b.w, height: b.h, transform: `scale(${scale})` }}>
               {items.map((it) => <div key={it.id} className={`plan-item ${it.kind}`} style={{ left: it.x - b.x, top: it.y - b.y, width: it.w, height: it.h }}><Shape it={it} /></div>)}
               {placed.map((x) => (
-                <button key={x.id} className={`plan-table ${state(x)}${x.shape === 'round' ? ' round' : ''}${sel === x.id ? ' sel' : ''}`}
+                <button key={x.id} data-tid={x.id} className={`plan-table ${state(x)}${x.shape === 'round' ? ' round' : ''}${sel === x.id ? ' sel' : ''}${hot === x.id ? ' kb' : ''}`}
                   style={{ left: x.px - b.x, top: x.py - b.y, width: x.pw, height: x.ph }} onClick={() => onSelect(x.id)}>
                   <b>{x.name}</b>{x.order_id ? <><span className="due">{money(x.due_cents)}</span><small>{x.waiter_name}</small></> : null}
                 </button>
@@ -69,7 +69,7 @@ export function PlanView({ app, data, zone, sel, onSelect, reload, onDrawing }) 
         <div className="plan-loose">
           {!empty && <small className="muted">{t('Not on the plan')}</small>}
           <div className="tiles small">{loose.map((x) => (
-            <button key={x.id} className={`tile ${state(x)}${sel === x.id ? ' sel' : ''}`} onClick={() => onSelect(x.id)}><b>{x.name}</b>{x.order_id ? <small>{money(x.due_cents)}</small> : null}</button>
+            <button key={x.id} data-tid={x.id} className={`tile ${state(x)}${sel === x.id ? ' sel' : ''}${hot === x.id ? ' kb' : ''}`} onClick={() => onSelect(x.id)}><b>{x.name}</b>{x.order_id ? <small>{money(x.due_cents)}</small> : null}</button>
           ))}</div>
         </div>
       )}

@@ -286,3 +286,4 @@ kbd { font: 600 .78rem/1 ui-monospace, Menlo, Consolas, monospace; padding: 3px 
 }
 .keep-address { margin: 14px 0; }
 .floor-view { display: flex; width: 100%; margin-bottom: 10px; } .floor-view button { flex: 1; }
+.tile.kb, .plan-table.kb { outline: 4px solid var(--amber); outline-offset: -4px; }

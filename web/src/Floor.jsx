@@ -37,11 +37,37 @@ export function Floor({ app }) {
   // and clears itself after a few seconds of no typing, so nothing stale is ever acted on.
   const [typed, setTyped] = useState('');
   const [drawing, setDrawing] = useState(false);
+  // Arrow keys move a highlight from table to table, by where the tables actually are on screen, so the same
+  // keys work on the grid and on the drawn plan. Enter opens the highlighted table.
+  const [hot, setHot] = useState(null);
+  const floorRef = useRef(null);
+  useEffect(() => { setHot(null); }, [zone]);
+  useEffect(() => { if (sel != null) setHot(sel); }, [sel]);
+  useEffect(() => { if (hot != null) floorRef.current?.querySelector(`[data-tid="${hot}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [hot]);
+  const stepTable = (key) => {
+    const nodes = [...(floorRef.current?.querySelectorAll('[data-tid]') || [])];
+    if (!nodes.length) return;
+    const box = (n) => { const r = n.getBoundingClientRect(); return { id: Number(n.dataset.tid), x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const all = nodes.map(box), from = all.find((b) => b.id === hot);
+    if (!from) { setHot(all.slice().sort((a, b) => a.y - b.y || a.x - b.x)[0].id); return; }
+    const [dx, dy] = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    let best = null;
+    for (const b of all) {
+      if (b.id === from.id) continue;
+      const along = (b.x - from.x) * dx + (b.y - from.y) * dy, across = Math.abs((b.x - from.x) * dy) + Math.abs((b.y - from.y) * dx);
+      if (along < 8) continue;                                   // not in that direction
+      const score = along + across * 2.5;                        // prefer the one most directly that way
+      if (!best || score < best.score) best = { id: b.id, score };
+    }
+    if (best) setHot(best.id);
+  };
   useEffect(() => { if (!typed) return undefined; const h = setTimeout(() => setTyped(''), 6000); return () => clearTimeout(h); }, [typed]);
   useKeys((e) => {
     if (!data) return;
     if (modalsOpen() || typingIn(e) || sel != null) return;
     if (e.key === 'F3') { e.preventDefault(); pickMode(mode === 'plan' ? 'grid' : 'plan'); return; }
+    if (e.key.startsWith('Arrow') && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); stepTable(e.key); return; }
+    if (e.key === 'Enter' && !typed && hot != null) { e.preventDefault(); if (data.tables.some((x) => x.id === hot)) setSel(hot); return; }
     if (e.key === 'PageDown' || e.key === 'PageUp') {
       e.preventDefault();
       const zs = data.zones, i = zs.findIndex((z) => z.id === zone);
@@ -67,7 +93,7 @@ export function Floor({ app }) {
   if (!data || !menu) return <div className="page"><p className={err ? 'notice bad' : 'muted'}>{err || t('Loading')}</p></div>;
   const table = sel != null ? data.tables.find((x) => x.id === sel) : null;
   const grid = (
-    <section className="floor">
+    <section className="floor" ref={floorRef}>
       {err && <p className="notice bad">{err}</p>}
       {typed && <div className="typed-chip">{t('Table')} <b>{typed}</b><span>↵</span></div>}
       <div className="seg floor-view" role="group" aria-label={t('Floor view')}>
@@ -80,12 +106,12 @@ export function Floor({ app }) {
           return <button key={z.id} role="tab" aria-selected={zone === z.id} className={zone === z.id ? 'on' : ''} onClick={() => setZone(z.id)}>{z.name}{open > 0 && <i>{open}</i>}</button>;
         })}
       </div>
-      {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} onDrawing={setDrawing} /> : (
+      {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} onDrawing={setDrawing} hot={sel == null ? hot : null} /> : (
       <div className="tiles">
         {data.tables.filter((x) => x.zone_id === zone).map((x) => {
           const state = !x.order_id ? 'free' : x.waiter_id === app.user.id ? 'mine' : 'theirs';
           return (
-            <button key={x.id} className={`tile ${state}${sel === x.id ? ' sel' : ''}`} onClick={() => setSel(x.id)}>
+            <button key={x.id} data-tid={x.id} className={`tile ${state}${sel === x.id ? ' sel' : ''}${hot === x.id && sel == null ? ' kb' : ''}`} onClick={() => setSel(x.id)}>
               <b>{x.name}</b>
               {x.order_id ? <><span className="due">{money(x.due_cents)}</span><small>{x.waiter_name}{x.part_paid ? ' · ' + t('part paid') : ''}</small></> : <small>{t('Free')}</small>}
             </button>
