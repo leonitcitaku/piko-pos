@@ -81,6 +81,15 @@ function askQuit() {
   w.loadFile(path.join(__dirname, 'quit.html'));
 }
 ipcMain.handle('win-minimise', () => { if (win) win.minimize(); });
+// Start with the PC: on by default, and a switch in the System tab from then on. The choice is remembered,
+// so an update or a restart never turns it back on behind the owner's back.
+const autostartFile = () => path.join(app.getPath('userData'), 'autostart-chosen.json');
+ipcMain.handle('autostart-get', () => (packaged ? app.getLoginItemSettings().openAtLogin : false));
+ipcMain.handle('autostart-set', (_e, on) => {
+  app.setLoginItemSettings({ openAtLogin: !!on });
+  try { fs.writeFileSync(autostartFile(), JSON.stringify({ on: !!on })); } catch { /* the setting itself still took */ }
+  return app.getLoginItemSettings().openAtLogin;
+});
 ipcMain.handle('quit-with-pin', async (_e, pin) => {
   if (!info) { quitting = true; app.quit(); return { ok: true }; }
   try {
@@ -94,7 +103,7 @@ ipcMain.handle('quit-with-pin', async (_e, pin) => {
 });
 
 app.whenReady().then(() => {
-  if (packaged) app.setLoginItemSettings({ openAtLogin: true });   // start with Windows
+  if (packaged && !fs.existsSync(autostartFile())) app.setLoginItemSettings({ openAtLogin: true });   // start with Windows, until the owner says otherwise
   const iconPath = path.join(__dirname, 'tray.png');
   tray = new Tray(fs.existsSync(iconPath) ? iconPath : nativeImage.createEmpty());
   tray.on('click', showWindow);

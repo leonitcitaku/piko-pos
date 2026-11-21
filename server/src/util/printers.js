@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const run = (cmd, args, opts = {}) => new Promise((resolve, reject) => {
   execFile(cmd, args, { timeout: 20000, windowsHide: true, maxBuffer: 4 * 1024 * 1024, ...opts },
-    (err, stdout, stderr) => (err ? reject(new Error(String(stderr || err.message).trim().split('\n')[0])) : resolve(String(stdout))));
+    (err, stdout, stderr) => (err ? reject(new Error(String(stderr || stdout || err.message).trim().split('\n')[0])) : resolve(String(stdout))));
 });
 
 // -> [{ name, share, shared, port, host, driver, is_default, offline }]
@@ -60,7 +60,14 @@ public class PosRawPrint {
   }
 }
 '@
-[PosRawPrint]::Send($Printer, [IO.File]::ReadAllBytes($Path))
+try {
+  [PosRawPrint]::Send($Printer, [IO.File]::ReadAllBytes($Path))
+  Write-Output 'POS-PRINT-OK'
+} catch {
+  $m = $_.Exception.Message; if ($_.Exception.InnerException) { $m = $_.Exception.InnerException.Message }
+  Write-Output ('POS-PRINT-FAILED ' + $m)
+  exit 1
+}
 `;
 
 export async function sendWindowsRaw(printerName, bytes) {
@@ -72,6 +79,14 @@ export async function sendWindowsRaw(printerName, bytes) {
   const bin = path.join(dir, `job-${process.pid}-${Date.now()}.bin`);
   await fs.promises.writeFile(bin, bytes);
   try {
-    await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Printer', printerName, '-Path', bin]);
+    // Older PowerShell exits 0 from -File even when the script threw, which would mark a ticket printed
+    // that never left the PC. So success is only what the script itself says, never the exit code.
+    let out = '';
+    try { out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Printer', printerName, '-Path', bin]); }
+    catch (e) { out = String(e.message || e); }
+    if (!out.includes('POS-PRINT-OK')) {
+      const why = /POS-PRINT-FAILED (.*)/.exec(out);
+      throw new Error(why ? why[1].trim() : 'The printer did not take the ticket');
+    }
   } finally { fs.promises.unlink(bin).catch(() => {}); }
 }

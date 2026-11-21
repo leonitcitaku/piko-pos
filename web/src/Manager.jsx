@@ -406,6 +406,22 @@ function SettingsTab({ app }) {
 }
 
 // ---------------------------------------------------------------- System
+// Only inside the desktop application on the POS computer: whether it opens by itself when the PC is turned on.
+function Autostart() {
+  const [on, setOn] = useState(null);
+  const { toast } = useUi();
+  useEffect(() => { window.pos.getAutostart().then(setOn).catch(() => setOn(false)); }, []);
+  if (on == null) return null;
+  return (
+    <section className="autostart">
+      <h2>{t('Start with the PC')}</h2>
+      <div className="row between wrap">
+        <p className="muted">{t('The POS opens by itself when this PC is turned on and Windows has logged in.')}</p>
+        <button className={'btn ' + (on ? 'primary' : '')} onClick={async () => { const v = await window.pos.setAutostart(!on); setOn(v); toast(t('Saved')); }}>{on ? t('On') : t('Off')}</button>
+      </div>
+    </section>
+  );
+}
 function SystemTab({ app }) {
   const [i, load] = useLoad('/api/system/info');
   const ui = useUi();
@@ -428,6 +444,7 @@ function SystemTab({ app }) {
         <div><dt>{t('Version')}</dt><dd>{i.version}</dd></div>
         <div><dt>{t('Data folder')}</dt><dd>{i.data_dir}</dd></div>
       </dl>
+      {window.pos?.getAutostart && <Autostart />}
       <Backups owner={app.user.role === 'owner'} />
       {app.user.role === 'owner' && (
         <section className="danger-zone">

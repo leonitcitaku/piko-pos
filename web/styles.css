@@ -231,3 +231,4 @@ td.neg { color: var(--brick); font-weight: 600; } b.neg { color: var(--brick); }
 .plan.editing .plan-table, .plan.editing .plan-item { cursor: grab; touch-action: none; }
 .plan.editing .picked { outline: 3px solid var(--amber); outline-offset: 2px; }
 .plan.editing .plan-item.label { outline: 1px dashed #b9c5bf; }
+.plan.editing .picked { z-index: 5; }
