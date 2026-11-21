@@ -281,6 +281,8 @@ export function registerRoutes(r, cfg) {
     const KINDS = ['bar', 'chair', 'wall', 'label', 'plant', 'door'];
     tx(() => {
       for (const t of c.body.tables || []) {
+        // No position means the table is taken off the plan; it stays a table and waits in the tray.
+        if (t.px == null) { run('UPDATE tables SET px = NULL, py = NULL, pw = NULL, ph = NULL WHERE id = ? AND zone_id = ?', int(t.id, 'id'), zone); continue; }
         const b = box({ x: t.px, y: t.py, w: t.pw, h: t.ph });
         run("UPDATE tables SET px = ?, py = ?, pw = ?, ph = ?, shape = ? WHERE id = ? AND zone_id = ?", b.x, b.y, b.w, b.h, t.shape === 'round' ? 'round' : 'square', int(t.id, 'id'), zone);
       }

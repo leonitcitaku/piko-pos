@@ -453,6 +453,8 @@ test('cafe POS', async (t) => {
     const view = ok(await w1.get('/api/tables'));
     const got = view.tables.find((x) => x.id === tb.id);
     assert.equal(got.px, 120); assert.equal(got.shape, 'round'); assert.equal(view.plan.filter((i) => i.zone_id === zone).length, 2);
+    ok(await manager.put(`/api/plan/${zone}`, { tables: [{ id: tb.id, px: null }], items: [{ kind: 'bar', x: 400, y: 40, w: 300, h: 70, label: 'Banaku' }, { kind: 'chair', x: 420, y: 120, w: 36, h: 36 }] }));
+    assert.equal(ok(await w1.get('/api/tables')).tables.find((x) => x.id === tb.id).px, null, 'a table can be taken off the plan');
     assert.equal((await manager.put(`/api/plan/${zone}`, { tables: [], items: [{ kind: 'rocket', x: 1, y: 1, w: 20, h: 20 }] })).status, 400);
     assert.equal(ok(await w1.get('/api/tables')).plan.filter((i) => i.zone_id === zone).length, 2, 'a refused save changes nothing');
   });

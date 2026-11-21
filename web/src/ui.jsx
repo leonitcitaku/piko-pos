@@ -9,6 +9,8 @@ const Ctx = createContext(null);
 // nobody is typing in a box, and only for the screen in front. A dialog in front owns the keyboard.
 let modalDepth = 0;
 export const modalsOpen = () => modalDepth;
+// A full screen tool (the plan editor) takes the keyboard like a dialog does, so the screens under it stay quiet.
+export const holdKeyboard = () => { modalDepth++; const mine = modalDepth; return { depth: mine, release: () => { modalDepth--; } }; };
 export const typingIn = (e) => { const el = e.target; return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable); };
 export const hasKeyboard = () => { try { return matchMedia('(pointer: fine)').matches; } catch { return false; } };
 // Listen to keys while a screen is mounted. The handler always sees the latest state.
