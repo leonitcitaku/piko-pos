@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { get, post, uid, money, clock, toCents, NetworkError, useEvents } from './api.js';
 import { t } from './i18n.js';
-import { Modal, Stepper, useUi } from './ui.jsx';
+import { Modal, Stepper, useUi, useKeys, typingIn, modalsOpen, hasKeyboard } from './ui.jsx';
 import { errText, sleep, withApproval } from './util.js';
 import { PlanView } from './Plan.jsx';
 
@@ -33,12 +33,37 @@ export function Floor({ app }) {
     offline: () => setErr(t('No connection to the POS. Check the Wi-Fi.')),
   });
   useEffect(() => { if (data && zone == null && data.zones.length) setZone(data.zones[0].id); }, [data, zone]);
+  // Type a table's name and press Enter to open it. The chip shows exactly what Enter will use,
+  // and clears itself after a few seconds of no typing, so nothing stale is ever acted on.
+  const [typed, setTyped] = useState('');
+  useEffect(() => { if (!typed) return undefined; const h = setTimeout(() => setTyped(''), 6000); return () => clearTimeout(h); }, [typed]);
+  useKeys((e) => {
+    if (!data) return;
+    if (e.key === 'F3') { e.preventDefault(); pickMode(mode === 'plan' ? 'grid' : 'plan'); return; }
+    if (modalsOpen() || typingIn(e) || sel != null) return;
+    if (e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault();
+      const zs = data.zones, i = zs.findIndex((z) => z.id === zone);
+      if (zs.length) setZone(zs[(i + (e.key === 'PageDown' ? 1 : zs.length - 1)) % zs.length].id);
+      return;
+    }
+    if (/^[\p{L}\p{N}]$/u.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); setTyped((x) => (x + e.key).slice(0, 12)); return; }
+    if (e.key === 'Backspace' && typed) { e.preventDefault(); setTyped((x) => x.slice(0, -1)); return; }
+    if (e.key === 'Escape' && typed) { e.preventDefault(); setTyped(''); return; }
+    if (e.key === 'Enter' && typed) {
+      e.preventDefault();
+      const want = typed.toLowerCase(), hit = data.tables.find((x) => x.name.toLowerCase() === want);
+      if (hit) { setZone(hit.zone_id); setSel(hit.id); } else toast(`${t('No table called')} ${typed}`, 'bad');
+      setTyped('');
+    }
+  });
 
   if (!data || !menu) return <div className="page"><p className={err ? 'notice bad' : 'muted'}>{err || t('Loading')}</p></div>;
   const table = sel != null ? data.tables.find((x) => x.id === sel) : null;
   const grid = (
     <section className="floor">
       {err && <p className="notice bad">{err}</p>}
+      {typed && <div className="typed-chip">{t('Table')} <b>{typed}</b><span>↵</span></div>}
       <div className="zones" role="tablist">
         {data.zones.map((z) => {
           const open = data.tables.filter((x) => x.zone_id === z.id && x.order_id).length;
@@ -91,17 +116,46 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
     get(`/api/orders/${table.order_id}`).then((o) => alive.current && setOrder(o)).catch(() => {});
   }, [table.order_id, table.due_cents, table.items]);
 
-  const add = (p) => {
+  const [qtyNext, setQtyNext] = useState('');   // digits typed before choosing a drink: how many of it
+  const [find, setFind] = useState('');         // letters typed: find a drink by name, across every category
+  const [hit, setHit] = useState(0);
+  const add = (p, n) => {
     if (!p.available) return;
+    const many = Math.min(99, Math.max(1, n ?? (Number(qtyNext) || 1)));
+    setQtyNext('');
     setCart((c) => {
       const i = c.findIndex((x) => x.product.id === p.id && !x.mods.length && !x.note);
-      if (i >= 0) return c.map((x, j) => (j === i ? { ...x, qty: x.qty + 1 } : x));
-      return [...c, { key: uid(), product: p, qty: 1, mods: [], note: '' }];
+      if (i >= 0) return [...c.filter((_, j) => j !== i), { ...c[i], qty: Math.min(99, c[i].qty + many) }];   // the line just touched is "the last drink"
+      return [...c, { key: uid(), product: p, qty: many, mods: [], note: '' }];
     });
   };
+  const plain = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const found = find ? menu.products.filter((p) => plain(p.name).includes(plain(find))).sort((a, b) => b.available - a.available) : null;
   const modsFor = (p) => menu.modifiers.filter((m) => m.category_id == null || m.category_id === p.category_id);
   const cartLine = (c) => (c.product.price_cents + c.mods.reduce((s, id) => s + (menu.modifiers.find((m) => m.id === id)?.price_cents || 0), 0)) * c.qty;
   const cartTotal = cart.reduce((s, c) => s + cartLine(c), 0);
+
+  const lastBump = (d) => setCart((c) => { if (!c.length) return c; const l = c[c.length - 1], q = l.qty + d; return q < 1 ? c.slice(0, -1) : [...c.slice(0, -1), { ...l, qty: Math.min(99, q) }]; });
+  useKeys((e) => {
+    if (modalsOpen() || typingIn(e) || dlg) return;
+    const plainKey = !e.ctrlKey && !e.altKey && !e.metaKey;
+    if (e.key === 'F2') { e.preventDefault(); if (cart.length) toast(t('Send the new drinks first'), 'bad'); else if (order && unpaidCount) setDlg({ type: 'pay' }); return; }
+    if (e.key === 'F4') { e.preventDefault(); if (order) setDlg({ type: 'more' }); return; }
+    if (found) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHit((h) => Math.min(h + 1, found.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setHit((h) => Math.max(h - 1, 0)); return; }
+      if (e.key === 'Enter') { e.preventDefault(); const p = found[Math.min(hit, found.length - 1)]; if (p && p.available) { add(p); setFind(''); setHit(0); } return; }
+      if (e.key === 'Backspace') { e.preventDefault(); setFind((f) => f.slice(0, -1)); setHit(0); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setFind(''); setHit(0); return; }
+    }
+    if (plainKey && /^[\p{L} ]$/u.test(e.key) && (e.key !== ' ' || find)) { e.preventDefault(); setFind((f) => f + e.key); setHit(0); return; }
+    if (plainKey && /^[0-9]$/.test(e.key)) { e.preventDefault(); setQtyNext((q) => (q + e.key).replace(/^0+/, '').slice(0, 2)); return; }
+    if (e.key === '+' || e.key === 'Add') { e.preventDefault(); lastBump(1); return; }
+    if (e.key === '-' || e.key === 'Subtract') { e.preventDefault(); lastBump(-1); return; }
+    if (e.key === 'Delete') { e.preventDefault(); setCart((c) => c.slice(0, -1)); return; }
+    if (e.key === 'Escape') { e.preventDefault(); if (qtyNext) setQtyNext(''); else onClose(); return; }
+    if (e.key === 'Enter' && cart.length) { e.preventDefault(); sendCart(); }
+  });
 
   const sendCart = async () => {
     if (!cart.length || send !== 'idle') return;
@@ -137,6 +191,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
 
   const live = (order?.items || []).filter((i) => i.status === 'sent');
   const unpaid = live.filter((i) => !i.payment_id);
+  const unpaidCount = unpaid.length;
   const busyTables = tables.tables.filter((x) => x.order_id && x.id !== table.id);
   const freeTables = tables.tables.filter((x) => !x.order_id);
   const act = async (fn, okMsg) => { try { const r = await fn(); if (r !== null && okMsg) toast(okMsg); return r; } catch (e) { toast(errText(e), 'bad'); return undefined; } };
@@ -171,10 +226,18 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
         )}
         {(!order || !order.items.length) && !cart.length && <p className="muted pad">{t('Nothing ordered yet. Pick items below.')}</p>}
 
-        <div className="cats">{menu.categories.map((c) => <button key={c.id} className={cat === c.id ? 'on' : ''} onClick={() => setCat(c.id)}>{c.name}</button>)}</div>
+        {(find || qtyNext) && (
+          <div className="findbar">
+            {qtyNext && <span className="pill warn">{qtyNext} ×</span>}
+            {find && <span>{t('Find')}: <b>{find}</b></span>}
+            {find && <small className="muted">↑ ↓ · ↵ · Esc</small>}
+          </div>
+        )}
+        {!found && <div className="cats">{menu.categories.map((c) => <button key={c.id} className={cat === c.id ? 'on' : ''} onClick={() => setCat(c.id)}>{c.name}</button>)}</div>}
+        {found && !found.length && <p className="muted pad">{t('Nothing found')}</p>}
         <div className="products">
-          {menu.products.filter((p) => p.category_id === cat).map((p) => (
-            <button key={p.id} className={'product' + (p.available ? '' : ' out')} onClick={() => add(p)} disabled={!p.available}>
+          {(found || menu.products.filter((p) => p.category_id === cat)).map((p, i) => (
+            <button key={p.id} className={'product' + (p.available ? '' : ' out') + (found && i === hit ? ' hit' : '')} onClick={() => { add(p); setFind(''); }} disabled={!p.available}>
               <b>{p.name}</b><span>{p.available ? money(p.price_cents) : t('Sold out')}</span>
             </button>
           ))}
@@ -322,7 +385,16 @@ function PayDialog({ app, order, unpaid, onClose, onPaid }) {
   const all = unpaid.every((i) => qty[i.id] === i.qty);
   const rc = toCents(received);
   const change = received && Number.isFinite(rc) ? rc - total : null;
+  // Enter is cash, F8 on the house. Digits go into "cash received", which has the cursor when there is a keyboard.
+  const depth = useRef(0);
+  useEffect(() => { depth.current = modalsOpen(); }, []);
+  useKeys((e) => {
+    if (busy || modalsOpen() > depth.current) return;          // the approval PIN pad is on top
+    if (e.key === 'Enter' && total > 0) { e.preventDefault(); pay('cash'); }
+    else if (e.key === 'F8' && total > 0) { e.preventDefault(); pay('house'); }
+  });
   const pay = async (type) => {
+    if (busy) return;
     setBusy(true);
     try {
       const body = { payment_id: pid.current, type, items: all ? undefined : unpaid.filter((i) => qty[i.id] > 0).map((i) => ({ id: i.id, qty: qty[i.id] })) };
@@ -345,7 +417,7 @@ function PayDialog({ app, order, unpaid, onClose, onPaid }) {
       <div className="payfoot">
       <div className="paytotal"><span>{t('Total')}</span><b>{money(total)}</b></div>
       <div className="row">
-        <label className="field grow"><span>{t('Cash received')}</span><input className="input" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} placeholder="0.00" /></label>
+        <label className="field grow"><span>{t('Cash received')}</span><input className="input" inputMode="decimal" autoFocus={hasKeyboard()} value={received} onChange={(e) => setReceived(e.target.value)} placeholder="0.00" /></label>
         <div className={'change' + (change != null && change < 0 ? ' neg' : '')}><small>{t('Change to give back')}</small><b>{change == null ? '–' : money(change)}</b></div>
       </div>
       <div className="row">

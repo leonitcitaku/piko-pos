@@ -2,6 +2,24 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { t } from './i18n.js';
 
 const Ctx = createContext(null);
+
+// ---------------------------------------------------------------- keyboard
+// One rule for the whole app: function keys and Esc always work; letters, digits and Enter only act when
+// nobody is typing in a box, and only for the screen in front. A dialog in front owns the keyboard.
+let modalDepth = 0;
+export const modalsOpen = () => modalDepth;
+export const typingIn = (e) => { const el = e.target; return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable); };
+export const hasKeyboard = () => { try { return matchMedia('(pointer: fine)').matches; } catch { return false; } };
+// Listen to keys while a screen is mounted. The handler always sees the latest state.
+export function useKeys(handler, active = true) {
+  const ref = useRef(handler); ref.current = handler;
+  useEffect(() => {
+    if (!active) return undefined;
+    const k = (e) => ref.current(e);
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [active]);
+}
 export const useUi = () => useContext(Ctx);
 
 export function UiProvider({ children }) {
@@ -14,6 +32,10 @@ export function UiProvider({ children }) {
   }, []);
   // Ask for a PIN on the spot. Resolves with the PIN, or null if cancelled.
   const askPin = useCallback((title) => new Promise((resolve) => setPinAsk({ title, resolve })), []);
+  const [help, setHelp] = useState(false);
+  useKeys((e) => {
+    if (e.key === 'F1' || (e.key === '?' && !typingIn(e))) { e.preventDefault(); setHelp((h) => !h); }
+  });
   return (
     <Ctx.Provider value={{ toast, askPin }}>
       {children}
@@ -23,12 +45,17 @@ export function UiProvider({ children }) {
           <PinPad onDone={(pin) => { pinAsk.resolve(pin); setPinAsk(null); }} />
         </Modal>
       )}
+      {help && <ShortcutHelp onClose={() => setHelp(false)} />}
     </Ctx.Provider>
   );
 }
 
 export function Modal({ title, children, onClose, wide }) {
-  useEffect(() => { const k = (e) => e.key === 'Escape' && onClose?.(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  // Each dialog remembers how deep it opened, once. Only the one on top answers Esc.
+  const mine = useRef(0);
+  useEffect(() => { modalDepth++; mine.current = modalDepth; return () => { modalDepth--; }; }, []);
+  // Esc closes only the dialog on top, not every dialog under it.
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape' && mine.current === modalDepth) { e.stopImmediatePropagation(); onClose?.(); } }; window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true); }, [onClose]);
   return (
     <div className="veil" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={'sheet' + (wide ? ' wide' : '')} role="dialog" aria-label={title}>
@@ -57,7 +84,7 @@ export function PinPad({ onDone, error, busy, len = 6 }) {
   }, []);
   return (
     <div className="pinpad">
-      <div className={'pin-dots' + (error ? ' shake' : '')} aria-label="PIN">{[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className={i < pin.length ? 'on' : ''} />)}</div>
+      <div className={'pin-dots' + (error ? ' shake' : '')} aria-label="PIN">{Array.from({ length: len }, (_, i) => <span key={i} className={i < pin.length ? 'on' : ''} />)}</div>
       {error && <p className="pin-error">{error}</p>}
       <div className="keys">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => <button key={d} {...noFocus} onClick={() => press(d)}>{d}</button>)}
@@ -96,4 +123,24 @@ export class ErrorBoundary extends React.Component {
       </div></div>
     );
   }
+}
+
+// F1 anywhere, or ? when not typing: every shortcut on one screen.
+const KEYS = [
+  ['Everywhere', [['F1', 'This list of shortcuts'], ['Esc', 'Close the dialog, or go back'], ['F12', 'Lock the screen'], ['Alt 1 / 2 / 3', 'Tables, My session, Manager']]],
+  ['Login', [['1 to 9', 'Pick the person with that number'], ['0 to 9', 'Type the PIN, it logs in by itself'], ['Esc', 'Back to the names']]],
+  ['Tables', [['Table name, then Enter', 'Open that table'], ['Page Up / Page Down', 'Next or previous area'], ['F3', 'Switch between grid and plan']]],
+  ['Order', [['Letters', 'Find a drink by name'], ['Arrow up / down', 'Choose in the list found'], ['Enter', 'Add the drink found, or send to the bar'], ['0 to 9', 'How many of the next drink'], ['+ / -', 'One more or one less of the last drink'], ['Delete', 'Remove the last drink'], ['F2', 'Take payment'], ['F4', 'More: move, merge, discount, reprint']]],
+  ['Payment', [['0 to 9', 'Cash received'], ['Enter', 'Paid in cash'], ['F8', 'On the house']]],
+];
+function ShortcutHelp({ onClose }) {
+  return (
+    <Modal title={t('Keyboard shortcuts')} onClose={onClose} wide>
+      <div className="keyhelp">{KEYS.map(([group, rows]) => (
+        <section key={group}><h3>{t(group)}</h3>
+          <dl>{rows.map(([k, what]) => <div key={k}><dt><kbd>{t(k)}</kbd></dt><dd>{t(what)}</dd></div>)}</dl>
+        </section>
+      ))}</div>
+    </Modal>
+  );
 }

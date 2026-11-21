@@ -232,3 +232,15 @@ td.neg { color: var(--brick); font-weight: 600; } b.neg { color: var(--brick); }
 .plan.editing .picked { outline: 3px solid var(--amber); outline-offset: 2px; }
 .plan.editing .plan-item.label { outline: 1px dashed #b9c5bf; }
 .plan.editing .picked { z-index: 5; }
+
+/* ---- keyboard shortcuts ---- */
+kbd { font: 600 .78rem/1 ui-monospace, Menlo, Consolas, monospace; padding: 3px 6px; border: 1px solid #c9d3ce; border-bottom-width: 2px; border-radius: 5px; background: #fff; color: var(--ink); white-space: nowrap; }
+.name { position: relative; } .name kbd.corner { position: absolute; top: 6px; right: 6px; }
+.typed-chip { position: sticky; top: 0; z-index: 3; display: inline-flex; gap: 8px; align-items: center; margin-bottom: 8px; padding: 6px 12px; border-radius: 99px; background: var(--ink); color: #fff; font-size: 1rem; }
+.typed-chip span { opacity: .6; }
+.findbar { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: var(--warn-soft); border-bottom: 1px solid var(--line); }
+.product.hit { outline: 3px solid var(--amber); outline-offset: -3px; }
+.keyhelp { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 22px; }
+.keyhelp h3 { margin: 10px 0 6px; font-size: 1rem; }
+.keyhelp dl { margin: 0; display: grid; gap: 6px; } .keyhelp dl div { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: baseline; } .keyhelp dd { margin: 0; color: var(--muted); }
+.keyhelp dl div { grid-template-columns: minmax(130px, 42%) 1fr; } .keyhelp kbd { white-space: normal; display: inline-block; line-height: 1.25; }

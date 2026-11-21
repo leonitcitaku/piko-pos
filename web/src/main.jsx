@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { get, post, put, ApiError, NetworkError, money, useEvents } from './api.js';
 import { t, setLang, getLang } from './i18n.js';
-import { UiProvider, PinPad, useUi, ErrorBoundary } from './ui.jsx';
+import { UiProvider, PinPad, useUi, ErrorBoundary, useKeys, typingIn, modalsOpen, hasKeyboard } from './ui.jsx';
 import { Floor } from './Floor.jsx';
 import { Manager } from './Manager.jsx';
 import { errText, isPc } from './util.js';
@@ -34,6 +34,13 @@ function Login({ cafe, onDone, onLang }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { get('/api/auth/users').then(setUsers).catch((e) => setErr(errText(e))); }, []);
+  // On the name list 1 to 9 picks a person; once one is picked the digits belong to the PIN pad.
+  useKeys((e) => {
+    if (modalsOpen() || typingIn(e)) return;
+    if (!who && /^[1-9]$/.test(e.key) && users?.[Number(e.key) - 1]) { e.preventDefault(); setWho(users[Number(e.key) - 1]); setErr(''); }
+    else if (who && e.key === 'Escape') { e.preventDefault(); setWho(null); setErr(''); }
+  });
+  const kb = hasKeyboard();
   const tryPin = async (pin) => {
     setBusy(true); setErr('');
     try { onDone(await post('/api/auth/login', { user_id: who.id, pin })); }
@@ -52,9 +59,9 @@ function Login({ cafe, onDone, onLang }) {
             <h1>{t('Who are you?')}</h1>
             {err && <p className="pin-error">{err}</p>}
             <div className="names">
-              {(users || []).map((u) => (
+              {(users || []).map((u, i) => (
                 <button key={u.id} className="name" onClick={() => { setWho(u); setErr(''); }}>
-                  <b>{u.name}</b><small>{t(u.role)}</small>
+                  {kb && i < 9 && <kbd className="corner">{i + 1}</kbd>}<b>{u.name}</b><small>{t(u.role)}</small>
                 </button>
               ))}
             </div>
@@ -159,6 +166,10 @@ function Shell({ user, setUser, cafe }) {
   }, [idleSec, logout]);
 
   const app = { user, boss, isPc: isPc(), info, reloadInfo: loadInfo, afterAction: () => { if (isPc()) setTimeout(logout, 900); } };
+  useKeys((e) => {
+    if (e.key === 'F12') { e.preventDefault(); logout(); return; }
+    if (e.altKey && !e.ctrlKey && boss && ['1', '2', '3'].includes(e.key)) { e.preventDefault(); setView({ 1: 'floor', 2: 'me', 3: 'manager' }[e.key]); }
+  });
   const switchLang = async () => {
     const next = getLang() === 'sq' ? 'en' : 'sq';
     setLang(next);
