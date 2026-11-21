@@ -105,6 +105,19 @@ export function registerRoutes(r, cfg) {
   r.post('/api/sessions/float', { roles: BOSS }, (c) => dayS.giveFloat(c, c.body));
   r.post('/api/sessions/:id/settle', { roles: BOSS }, (c) => dayS.settle(c, int(c.params.id, 'id'), c.body));
   r.post('/api/cash/payout', { roles: BOSS }, (c) => dayS.payout(c, c.body));
+  // The shift slip: what this person has to hand in, printed on the bar printer.
+  r.post('/api/sessions/:id/print', { roles: BOSS }, (c) => {
+    const s = orders.sessionTotals(int(c.params.id, 'id'));
+    const id = enqueueTicket({ day_id: s.day_id, user_id: c.user.id, kind: 'shift', content: {
+      cafe: getSetting('cafe_name', 'Cafe'), user: s.user_name, started_at: s.started_at, settled_at: s.settled_at || null,
+      float_cents: s.float_cents, cash_cents: s.cash_cents, payout_cents: s.payout_cents, house_cents: s.house_cents,
+      owed_cents: s.settled_at ? s.expected_cents : s.owed_cents, handed_cents: s.handed_cents, difference_cents: s.difference_cents,
+      confirmed_by: s.confirmed_by ? (get('SELECT name FROM users WHERE id = ?', s.confirmed_by)?.name || '') : '',
+      tables_paid: get('SELECT COUNT(DISTINCT order_id) AS n FROM payments WHERE session_id = ?', s.id).n,
+      open_tables: s.open_tables.map((o) => o.table_name) } });
+    audit(c, 'shift_printed', s.id);
+    return { job_id: id };
+  });
 
   // ---------- reports ----------
   r.get('/api/reports/days', { roles: BOSS }, () => reports.listDays());

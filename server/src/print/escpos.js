@@ -5,7 +5,9 @@ const TRANSLIT = { 'ë': 'e', 'Ë': 'E', 'ç': 'c', 'Ç': 'C' };
 export const plain = (s) => String(s ?? '').replace(/[ëËçÇ]/g, (c) => TRANSLIT[c]).replace(/[^\x20-\x7E]/g, '?');
 
 const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
-const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', copy: 'POROSI', test: 'TEST' };
+const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', copy: 'POROSI', test: 'TEST', shift: 'RAPORTI I NDERRIMIT' };
+const eur = (c) => ((c || 0) / 100).toFixed(2) + ' EUR';
+const hhmmDay = (ms) => { const d = new Date(ms); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${hhmm(ms)}`; };
 
 // 'big' lines print double width, so they only fit half as many characters as the rest.
 const budget = (style, width) => (style === 'big' ? Math.floor(width / 2) : width);
@@ -49,6 +51,34 @@ export function ticketLines(job, width = DEFAULT_WIDTH) {
   if (job.was_late) { push('*** VONESE ***', 'big'); push('*** LATE ***', 'big'); push('Derguar ne ' + hhmm(job.original_time), 'big'); }
   if (isCopy) { push('*** KOPJE ***', 'big'); push('*** COPY ***', 'big'); }
   push(TITLES[job.kind] || 'POROSI', 'center');
+  // The slip a waiter is settled with: what they started with, what they took, what they hand in.
+  if (job.kind === 'shift') {
+    // Label on the left, amount on the right. Added as is: the word wrapper would squeeze the gap out.
+    const row = (label, value) => out.push({ text: plain(label + ' '.repeat(Math.max(1, width - label.length - value.length)) + value), style: undefined });
+    push(c.cafe || 'Cafe', 'center');
+    push(c.user || '', 'big');
+    push(`${hhmmDay(c.started_at)} - ${hhmmDay(c.settled_at || job.original_time)}`, 'center');
+    push('', 'rule');
+    row('Para fillestare', eur(c.float_cents));
+    row('Shitje kesh', eur(c.cash_cents));
+    if (c.payout_cents) row('Pagesa nga arka', '-' + eur(c.payout_cents));
+    push('', 'rule');
+    push('PER DOREZIM', 'center');
+    push(eur(c.owed_cents), 'big');
+    if (c.settled_at) {
+      push('', 'rule');
+      row('Dorezoi', eur(c.handed_cents));
+      row('Diferenca', (c.difference_cents > 0 ? '+' : '') + eur(c.difference_cents));
+      if (c.confirmed_by) row('Pranoi', c.confirmed_by);
+    }
+    push('', 'rule');
+    if (c.house_cents) row('Nga shtepia', eur(c.house_cents));
+    row('Tavolina te paguara', String(c.tables_paid || 0));
+    if ((c.open_tables || []).length) push('TAVOLINA TE HAPURA: ' + c.open_tables.join(', '), 'bold');
+    if (!c.settled_at) { push(''); push('Nenshkrimi: ______________'); }
+    push('#' + job.id, 'center');
+    return out;
+  }
   if (job.kind === 'test') { push(c.cafe || 'Cafe', 'big'); push('Printeri punon', 'center'); push(hhmm(job.original_time), 'center'); return out; }
   push('TAVOLINA ' + c.table, 'big');
   push(`${c.zone} | ${c.waiter || ''} | ${hhmm(job.original_time)}`, 'center');

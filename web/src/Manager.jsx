@@ -83,7 +83,7 @@ function DayTab({ app }) {
               <td className="r"><b><Money c={s.settled_at ? s.expected_cents : s.owed_cents} /></b></td>
               <td className="r">{s.settled_at ? <Money c={s.handed_cents} /> : ''}</td>
               <td className="r">{s.settled_at ? <Money c={s.difference_cents} /> : ''}</td>
-              <td className="r">{s.settled_at ? <small>{t('Settled')} {clock(s.settled_at)}</small> : <button className="btn primary" onClick={() => setDlg({ type: 'settle', s, handed: '' })}>{t('Settle')}</button>}</td>
+              <td className="r">{s.settled_at ? <small>{t('Settled')} {clock(s.settled_at)}</small> : <button className="btn primary" onClick={() => setDlg({ type: 'settle', s, handed: '' })}>{t('Settle')}</button>} <button className="btn" title={t('Print the shift report')} onClick={() => act(() => post(`/api/sessions/${s.id}/print`), t('Ticket sent to the printer'))}>🖨</button></td>
             </tr>
           ))}
           {!d.sessions.length && <tr><td colSpan="8" className="muted">–</td></tr>}
@@ -104,6 +104,7 @@ function DayTab({ app }) {
           {dlg.s.open_tables.length > 0 && <p className="notice bad">{t('Open tables')}: {dlg.s.open_tables.map((o) => o.table_name).join(', ')}</p>}
           <Field label={t('Cash handed over')}><input className="input" inputMode="decimal" autoFocus value={dlg.handed} onChange={(e) => setDlg({ ...dlg, handed: e.target.value })} placeholder="0.00" /></Field>
           {dlg.handed !== '' && Number.isFinite(toCents(dlg.handed)) && <p>{t('Difference')}: <Money c={toCents(dlg.handed) - dlg.s.owed_cents} /></p>}
+          <button className="btn" onClick={() => act(() => post(`/api/sessions/${dlg.s.id}/print`), t('Ticket sent to the printer'))}>🖨 {t('Print the shift report')}</button>
           <button className="btn primary big" disabled={dlg.handed === '' || !Number.isFinite(toCents(dlg.handed))} onClick={async () => {
             if (await act(() => post(`/api/sessions/${dlg.s.id}/settle`, { handed_cents: toCents(dlg.handed) }), t('Settled'))) { setDlg(null); refresh(); } }}>{t('Settle')}</button>
         </Modal>
@@ -149,7 +150,7 @@ function TicketsTab({ app }) {
         {d.tickets.map((j) => (
           <li key={j.id} className={j.status}>
             <button className="ticket-row" onClick={() => setOpen(open === j.id ? null : j.id)}>
-              <b>#{j.id}</b><span>{j.kind !== 'test' ? `${t('Table')} ${j.content.table}` : 'Test'}</span><span>{clock(j.original_time)}</span><span>{j.user_name}</span>
+              <b>#{j.id}</b><span>{j.kind === 'test' ? 'Test' : j.kind === 'shift' ? `${t('Shift report')}: ${j.content.user}` : `${t('Table')} ${j.content.table}`}</span><span>{clock(j.original_time)}</span><span>{j.user_name}</span>
               <span className={'pill ' + (j.status === 'printed' ? 'ok' : j.status === 'waiting' ? 'bad' : '')}>{t(j.status)}</span>
               {j.was_late ? <span className="pill warn">{t('late')}</span> : null}{j.kind === 'copy' || j.content?.copy ? <span className="pill">{t('copy')}</span> : null}
             </button>

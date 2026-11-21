@@ -436,6 +436,11 @@ test('cafe POS', async (t) => {
     assert.match((await manager.get(`/api/reports/range.csv?from=${today}&to=${today}`)).data, new RegExp('Total sales,' + (E / 100).toFixed(2)));
     // settle 50 cents short: that is a loss on the waiter's profile
     const s = (await sessionOf('w1')).session;
+    assert.equal((await w1.post(`/api/sessions/${s.id}/print`)).status, 403, 'only a manager or owner prints a shift report');
+    const slip = ok(await manager.post(`/api/sessions/${s.id}/print`));
+    const printed = (await tickets()).find((j) => j.id === slip.job_id);
+    assert.equal(printed.kind, 'shift'); assert.match(printed.text, /PER DOREZIM/); assert.ok(printed.text.includes((s.owed_cents / 100).toFixed(2) + ' EUR'));
+    assert.ok(printed.text.split('\n').every((l) => l.length <= 32), 'the slip fits 58 mm paper');
     ok(await manager.post(`/api/sessions/${s.id}/settle`, { handed_cents: s.owed_cents - 50 }));
     const staff = ok(await manager.get('/api/reports/staff'));
     const me = staff.find((u) => u.id === ids.w1);

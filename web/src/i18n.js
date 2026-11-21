@@ -226,6 +226,8 @@ const sq = {
   'Turns off sleep, hibernate and sleeping on lid close in Windows, and checks them again at every start. Turning it off puts back what was there before.': 'Fik gjumin, hibernimin dhe gjumin kur mbyllet kapaku në Windows, dhe i kontrollon përsëri në çdo nisje. Kur e fik, kthehet si ishte më parë.',
   'Move over the tables': 'Lëviz nëpër tavolina',
   'Open the highlighted table': 'Hap tavolinën e zgjedhur',
+  'Shift report': 'Raporti i ndërrimit',
+  'Print the shift report': 'Printo raportin e ndërrimit',
   'Wipe test data': 'Fshij të dhënat e provës', 'This deletes every sale, ticket and report. The menu, tables and staff stay. Close the day first.': 'Kjo fshin çdo shitje, tiketë dhe raport. Menyja, tavolinat dhe stafi mbeten. Mbylle ditën së pari.',
   'Test data wiped.': 'Të dhënat e provës u fshinë.', 'Time': 'Koha', 'Who': 'Kush', 'Action': 'Veprimi', 'Detail': 'Detaje', 'mine': 'imja',
   'Qty to pay': 'Sasia për pagesë', 'New order': 'Porosi e re', 'Order mode': 'Porositë', 'English': 'English', 'Albanian': 'Shqip', 'Table': 'Tavolina',
