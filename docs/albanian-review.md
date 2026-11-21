@@ -1,0 +1,237 @@
+# Albanian review
+
+Every piece of Albanian the staff can see, 217 strings, straight from `web/src/i18n.js`.
+Correct anything in the right hand column and I will put it back in the file. Left column is the English key, do not change it.
+
+## Things I am unsure about
+
+These are my own doubts, not corrections. You decide.
+
+1. **Fshij të dhënat e provës** (Wipe test data). `Fshij` reads as "I delete". Should the button say `Fshi`?
+2. **Mbyll sesionet e pajisjeve të tjera** (Log out every other device). I wrote this one today and I am not confident it sounds natural.
+3. **Kusuri** is used both for the float a waiter starts with and for change given back. Is one word right for both?
+4. **pazarin** in "Disa nga stafi nuk e kanë dorëzuar pazarin". Right register for a cafe, or too colloquial?
+5. **Shëno s'ka** (Set as sold out) and **Ka prapë** (Back in stock). Short and spoken. Fine on a button?
+6. The app addresses staff informally throughout (`Kush je ti?`, `Emri yt`). Confirm that is what you want.
+
+## All strings
+
+| English | Albanian |
+| --- | --- |
+| Tables | Tavolinat |
+| Manager | Menaxhimi |
+| My session | Sesioni im |
+| Log out | Dil |
+| Lock | Mbyll ekranin |
+| Who are you? | Kush je ti? |
+| Enter your PIN | Shkruaj PIN-in |
+| Back | Kthehu |
+| Wrong PIN | PIN i gabuar |
+| Too many wrong PINs. Wait a minute. | Shumë PIN-a të gabuar. Prit një minutë. |
+| Welcome. Set up the owner account. | Mirë se erdhe. Krijo llogarinë e pronarit. |
+| Your name | Emri yt |
+| Cafe name | Emri i lokalit |
+| PIN (4 to 6 digits) | PIN (4 deri 6 shifra) |
+| Start | Fillo |
+| owner | pronar |
+| manager | menaxher |
+| waiter | kamarier |
+| bartender | banakier |
+| Free | E lirë |
+| Send to bar | Dërgo në banak |
+| Sending | Duke dërguar |
+| Retrying | Duke provuar prapë |
+| Sent | U dërgua |
+| Pay | Paguaj |
+| Total | Totali |
+| Due | Për pagesë |
+| Paid | Paguar |
+| Ordered | Porositur |
+| New items | Artikuj të rinj |
+| Nothing ordered yet. Pick items below. | Ende asgjë. Zgjidh artikujt më poshtë. |
+| Sold out | S'ka |
+| Note | Shënim |
+| Note, for example no ice | Shënim, për shembull pa akull |
+| Remove | Hiq |
+| Done | Në rregull |
+| Cancel | Anulo |
+| Cancel item | Anulo artikullin |
+| Close | Mbyll |
+| Save | Ruaj |
+| Add | Shto |
+| More | Më shumë |
+| Move table | Zhvendos tavolinën |
+| Merge with another table | Bashko me tavolinë tjetër |
+| Move items | Zhvendos artikuj |
+| Pass to another waiter | Kalo te kamarier tjetër |
+| Discount | Zbritje |
+| Reprint ticket | Riprinto tiketën |
+| Pick a table | Zgjidh tavolinën |
+| Pick a free table | Zgjidh një tavolinë të lirë |
+| Pick the table to merge into | Zgjidh tavolinën ku bashkohet |
+| Pick who takes this table | Zgjidh kush e merr tavolinën |
+| Pick the items to move | Zgjidh artikujt për zhvendosje |
+| Next | Vazhdo |
+| Discount percent | Përqindja e zbritjes |
+| Why is it cancelled? | Pse anulohet? |
+| mistake | gabim |
+| spilled | u derdh |
+| customer left | klienti iku |
+| other | tjetër |
+| Manager or owner PIN | PIN i menaxherit ose pronarit |
+| Owner PIN | PIN i pronarit |
+| Take payment | Merr pagesën |
+| Pick what is being paid | Zgjidh çka paguhet |
+| Everything | Krejt |
+| Cash received | Para të pranuara |
+| Change to give back | Kusuri për kthim |
+| Cash | Kesh |
+| On the house | Nga shtëpia |
+| Table closed | Tavolina u mbyll |
+| Still to pay | Mbetet për pagesë |
+| The ticket did not print. Tell the bar. | Tiketa nuk u printua. Lajmëro banakun. |
+| No business day is open. A manager has to open the day. | Dita nuk është hapur. Menaxheri duhet ta hapë ditën. |
+| The PC clock is wrong. Fix it before taking orders. | Ora e kompjuterit është gabim. Rregulloje para se të marrësh porosi. |
+| No connection to the POS. Check the Wi-Fi. | S'ka lidhje me POS. Shiko Wi-Fi. |
+| Catch up mode is on: orders are recorded without printing. | Regjistrim pa printim: porositë ruhen pa tiketë. |
+| Open tables | Tavolina të hapura |
+| Cash to hand over so far | Para për dorëzim deri tani |
+| Starting change | Kusur fillestar |
+| Cash sales | Shitje kesh |
+| Paid out | Paguar nga arka |
+| No session yet. It starts with your first order. | Ende s'ka sesion. Fillon me porosinë e parë. |
+| Day | Dita |
+| Tickets | Tiketat |
+| Report | Raporti |
+| Menu | Menyja |
+| Staff | Stafi |
+| Settings | Cilësimet |
+| System | Sistemi |
+| Log | Regjistri |
+| Open the day | Hap ditën |
+| Close the day | Mbyll ditën |
+| The day is open since | Dita është hapur që nga |
+| No day is open. | Asnjë ditë e hapur. |
+| This day has been open for a long time. Did someone forget to close it? | Kjo ditë është hapur prej shumë kohësh. Mos ka harruar dikush ta mbyllë? |
+| Catch up mode | Regjistrim pa printim |
+| Turn on | Aktivizo |
+| Turn off | Çaktivizo |
+| Give change money | Jep kusur fillestar |
+| Settle | Dorëzo pazarin |
+| Owes | Duhet të dorëzojë |
+| Handed over | Dorëzoi |
+| Difference | Diferenca |
+| Settled | Dorëzuar |
+| Amount | Shuma |
+| Reason | Arsyeja |
+| Cash handed over | Para të dorëzuara |
+| Pay a supplier from the cash | Paguaj furnitor nga arka |
+| From | Nga |
+| House cash | Arka e lokalit |
+| Record payout | Regjistro pagesën |
+| Payouts today | Pagesat nga arka sot |
+| Some tables are still open | Disa tavolina janë ende të hapura |
+| Some staff have not settled yet | Disa nga stafi nuk e kanë dorëzuar pazarin |
+| Day closed. Backup saved. | Dita u mbyll. Kopja rezervë u ruajt. |
+| Printer | Printeri |
+| working | punon |
+| problem | problem |
+| off | i fikur |
+| waiting | në pritje |
+| printed | printuar |
+| skipped | kapërcyer |
+| Reprint | Riprinto |
+| Skip | Kapërce |
+| No tickets yet today. | Ende s'ka tiketa sot. |
+| late | vonesë |
+| copy | kopje |
+| Total sales | Shitjet gjithsej |
+| Tables paid | Tavolina të paguara |
+| Still open | Ende të hapura |
+| By category | Sipas kategorisë |
+| By item | Sipas artikullit |
+| By hour | Sipas orës |
+| Qty | Sasia |
+| Cancelled after approval | Anulime me miratim |
+| Quick cancels | Anulime të shpejta |
+| Approved by | Miratoi |
+| Print | Printo |
+| Download CSV | Shkarko CSV |
+| No day to report yet. | Ende s'ka ditë për raport. |
+| Reprints | Riprintime |
+| Late tickets | Tiketa me vonesë |
+| Entered in catch up mode | Regjistruar pa printim |
+| Name | Emri |
+| Price | Çmimi |
+| VAT % | TVSH % |
+| Category | Kategoria |
+| Active | Aktiv |
+| Available | Ka |
+| Add product | Shto artikull |
+| Add category | Shto kategori |
+| Extras | Shtesat |
+| Add extra | Shto shtesë |
+| Only the owner can change prices. | Vetëm pronari i ndryshon çmimet. |
+| Role | Roli |
+| New PIN | PIN i ri |
+| Add staff member | Shto anëtar stafi |
+| Language | Gjuha |
+| Only the owner can manage staff. | Vetëm pronari e menaxhon stafin. |
+| Zones | Zonat |
+| Add zone | Shto zonë |
+| Add table | Shto tavolinë |
+| Printer connection | Lidhja e printerit |
+| No printer | Pa printer |
+| Network printer | Printer në rrjet |
+| USB printer shared in Windows | Printer USB i ndarë në Windows |
+| Save to files (testing) | Ruaj si skedarë (testim) |
+| Printer address | Adresa e printerit |
+| Port | Porti |
+| Windows share name | Emri i ndarjes në Windows |
+| Test print | Printim provë |
+| Fiscal | Fiskalizimi |
+| Off. No fiscal driver is installed yet. | I fikur. Ende s'ka drajver fiskal. |
+| Free cancel window, seconds | Koha për anulim falas, sekonda |
+| Second backup folder (USB stick) | Dosja e dytë e kopjes rezervë (USB) |
+| Lock the PC after idle, seconds | Mbyll ekranin pas pushimit, sekonda |
+| Saved | U ruajt |
+| Open this address on the phones | Hape këtë adresë në telefona |
+| Devices connected | Pajisje të lidhura |
+| Last backup | Kopja e fundit rezervë |
+| never | asnjëherë |
+| Back up now | Ruaj kopje tani |
+| PC clock | Ora e kompjuterit |
+| Version | Versioni |
+| Data folder | Dosja e të dhënave |
+| Log out every other device | Mbyll sesionet e pajisjeve të tjera |
+| For a phone that was lost. Everyone has to type their PIN again. This screen stays logged in. | Për një telefon të humbur. Të gjithë duhet ta shkruajnë PIN-in përsëri. Ky ekran mbetet brenda. |
+| Devices logged out | Sesione të mbyllura |
+| A manager or owner PIN must be 6 digits | PIN-i i menaxherit ose pronarit duhet të ketë 6 shifra |
+| Set a 6 digit PIN when making someone a manager or owner | Vendos një PIN me 6 shifra kur dikush bëhet menaxher ose pronar |
+| Wipe test data | Fshij të dhënat e provës |
+| This deletes every sale, ticket and report. The menu, tables and staff stay. Close the day first. | Kjo fshin çdo shitje, tiketë dhe raport. Menyja, tavolinat dhe stafi mbeten. Mbylle ditën së pari. |
+| Test data wiped. | Të dhënat e provës u fshinë. |
+| Time | Koha |
+| Who | Kush |
+| Action | Veprimi |
+| Detail | Detaje |
+| mine | imja |
+| Qty to pay | Sasia për pagesë |
+| New order | Porosi e re |
+| Order mode | Porositë |
+| English | English |
+| Albanian | Shqip |
+| Table | Tavolina |
+| part paid | pjesërisht paguar |
+| Waiting to print | Në pritje për printim |
+| Set as sold out | Shëno s'ka |
+| Back in stock | Ka prapë |
+| Refresh | Rifresko |
+| Loading | Duke ngarkuar |
+| Ticket sent to the printer | Tiketa u dërgua te printeri |
+| Float given | Kusuri u dha |
+| Payout recorded | Pagesa u regjistrua |
+| Backup saved | Kopja rezervë u ruajt |
+| Inactive | Joaktiv |
+| Zone | Zona |
+| Extra | Shtesë |
