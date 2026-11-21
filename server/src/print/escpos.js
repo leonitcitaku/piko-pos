@@ -78,7 +78,8 @@ const ESC = 0x1b, GS = 0x1d;
 export function ticketBytes(job) {
   const parts = [Buffer.from([ESC, 0x40])]; // init
   for (const l of ticketLines(job)) {
-    if (l.style === 'rule') { parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0x00]), Buffer.from('-'.repeat(WIDTH) + '\n', 'ascii')); continue; }
+    // Reset bold too, or a rule after a bold note line inherits it and prints heavy.
+    if (l.style === 'rule') { parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0x00, ESC, 0x45, 0]), Buffer.from('-'.repeat(WIDTH) + '\n', 'ascii')); continue; }
     const align = l.style === 'big' || l.style === 'center' ? 1 : 0;
     const size = l.style === 'big' ? 0x11 : 0x00;          // double width and height
     const bold = l.style === 'big' || l.style === 'bold' ? 1 : 0;
