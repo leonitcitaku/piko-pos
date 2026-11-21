@@ -18,6 +18,10 @@ const dataDir = process.platform === 'win32'
 
 let win = null, tray = null, server = null, info = null, quitting = false, restarts = 0;
 
+// A till draws text and buttons; it has no use for the graphics card. On older PCs and older Windows the
+// accelerated path left the window open but empty (the "blank screen"), so everything is drawn in software.
+app.disableHardwareAcceleration();
+
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => showWindow());
 
@@ -28,6 +32,7 @@ function startServer() {
     execPath: nodePath, execArgv: ['--disable-warning=ExperimentalWarning'],
     env: { ...process.env, POS_DATA_DIR: dataDir, POS_WEB_DIR: path.join(appRoot, 'web', 'dist'), POS_VERSION: app.getVersion() },
     stdio: ['ignore', log, log, 'ipc'],
+    windowsHide: true,   // no black console window for the server
   });
   server.on('message', (m) => {
     if (m && m.type === 'ready') { info = m; restarts = 0; refreshTray(); if (win) win.loadURL(localUrl()); else createWindow(); }
@@ -45,19 +50,33 @@ const wifiUrl = () => (info && info.urls && info.urls[0]) || '';
 function createWindow() {
   // The till owns the whole screen: no title bar, no borders, no menu. The ▁ button in the app minimises it,
   // F11 leaves and re-enters full screen, and quitting stays in the tray menu behind the manager PIN.
-  win = new BrowserWindow({ width: 1366, height: 800, minWidth: 1000, minHeight: 640, frame: false, fullscreen: true, autoHideMenuBar: true,
+  win = new BrowserWindow({ width: 1366, height: 800, minWidth: 1000, minHeight: 640, frame: false, show: false, autoHideMenuBar: true,
     title: 'Cafe POS', backgroundColor: '#1f4d3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs') } });
+  win.once('ready-to-show', () => { win.show(); goFull(); });
+  win.on('restore', goFull);
   win.loadURL(localUrl());
   // A blank window is never acceptable. If the page did not load (the server was still starting, or was
   // restarting), try again; if the page itself crashed, load it afresh.
   win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => { if (isMainFrame && code !== -3) setTimeout(() => { if (win && info) win.loadURL(localUrl()); }, 1200); });
   win.webContents.on('render-process-gone', () => setTimeout(() => { if (win && info) win.loadURL(localUrl()); }, 800));
-  win.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); } });
+  win.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F11') { if (win.isFullScreen() || win.isKiosk()) { win.setKiosk(false); win.setFullScreen(false); } else goFull(); e.preventDefault(); } });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   // Closing the window must not stop the POS: phones would drop mid service. It goes to the tray instead.
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
 }
-function showWindow() { if (!win) { if (info) createWindow(); return; } if (win.isMinimized()) win.restore(); win.show(); win.setFullScreen(true); win.focus(); }
+// Cover the whole screen, taskbar included. Asking for full screen in the constructor of a frameless window
+// left it one pixel short with the taskbar showing, so it is done after the window is up, and checked.
+function goFull() {
+  if (!win) return;
+  win.setFullScreen(true);
+  setTimeout(() => {
+    if (!win || win.isMinimized()) return;
+    const { screen } = require('electron');
+    const d = screen.getDisplayMatching(win.getBounds()).bounds, b = win.getBounds();
+    if (b.height < d.height || b.width < d.width) { win.setKiosk(true); }
+  }, 700);
+}
+function showWindow() { if (!win) { if (info) createWindow(); return; } if (win.isMinimized()) win.restore(); win.show(); goFull(); win.focus(); }
 
 function refreshTray() {
   if (!tray) return;
@@ -80,7 +99,7 @@ function askQuit() {
     title: 'Quit Cafe POS', webPreferences: { preload: path.join(__dirname, 'preload.cjs') } });
   w.loadFile(path.join(__dirname, 'quit.html'));
 }
-ipcMain.handle('win-minimise', () => { if (win) win.minimize(); });
+ipcMain.handle('win-minimise', () => { if (win) { if (win.isKiosk()) win.setKiosk(false); win.setFullScreen(false); win.minimize(); } });
 // Start with the PC: on by default, and a switch in the System tab from then on. The choice is remembered,
 // so an update or a restart never turns it back on behind the owner's back.
 const autostartFile = () => path.join(app.getPath('userData'), 'autostart-chosen.json');
