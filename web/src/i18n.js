@@ -20,12 +20,12 @@ const sq = {
   'No business day is open. A manager has to open the day.': 'Dita nuk është hapur. Menaxheri duhet ta hapë ditën.',
   'The PC clock is wrong. Fix it before taking orders.': 'Ora e kompjuterit është gabim. Rregulloje para se të marrësh porosi.',
   'No connection to the POS. Check the Wi-Fi.': 'S\'ka lidhje me POS. Shiko Wi-Fi.', 'Catch up mode is on: orders are recorded without printing.': 'Regjistrim pa printim: porositë ruhen pa tiketë.',
-  'Open tables': 'Tavolina të hapura', 'Cash to hand over so far': 'Para për dorëzim deri tani', 'Starting change': 'Kusur fillestar', 'Cash sales': 'Shitje kesh',
+  'Open tables': 'Tavolina të hapura', 'Cash to hand over so far': 'Para për dorëzim deri tani', 'Starting change': 'Para fillestare', 'Cash sales': 'Shitje kesh',
   'Paid out': 'Paguar nga arka', 'No session yet. It starts with your first order.': 'Ende s\'ka sesion. Fillon me porosinë e parë.',
   'Day': 'Dita', 'Tickets': 'Tiketat', 'Report': 'Raporti', 'Menu': 'Menyja', 'Staff': 'Stafi', 'Settings': 'Cilësimet', 'System': 'Sistemi', 'Log': 'Regjistri',
   'Open the day': 'Hap ditën', 'Close the day': 'Mbyll ditën', 'The day is open since': 'Dita është hapur që nga', 'No day is open.': 'Asnjë ditë e hapur.',
   'This day has been open for a long time. Did someone forget to close it?': 'Kjo ditë është hapur prej shumë kohësh. Mos ka harruar dikush ta mbyllë?',
-  'Catch up mode': 'Regjistrim pa printim', 'Turn on': 'Aktivizo', 'Turn off': 'Çaktivizo', 'Give change money': 'Jep kusur fillestar', 'Settle': 'Dorëzo pazarin',
+  'Catch up mode': 'Regjistrim pa printim', 'Turn on': 'Aktivizo', 'Turn off': 'Çaktivizo', 'Give change money': 'Jep para fillestare', 'Settle': 'Dorëzo pazarin',
   'Owes': 'Duhet të dorëzojë', 'Handed over': 'Dorëzoi', 'Difference': 'Diferenca', 'Settled': 'Dorëzuar', 'Amount': 'Shuma', 'Reason': 'Arsyeja',
   'Cash handed over': 'Para të dorëzuara', 'Pay a supplier from the cash': 'Paguaj furnitor nga arka', 'From': 'Nga', 'House cash': 'Arka e lokalit',
   'Record payout': 'Regjistro pagesën', 'Payouts today': 'Pagesat nga arka sot', 'Some tables are still open': 'Disa tavolina janë ende të hapura',
@@ -54,7 +54,7 @@ const sq = {
   'Test data wiped.': 'Të dhënat e provës u fshinë.', 'Time': 'Koha', 'Who': 'Kush', 'Action': 'Veprimi', 'Detail': 'Detaje', 'mine': 'imja',
   'Qty to pay': 'Sasia për pagesë', 'New order': 'Porosi e re', 'Order mode': 'Porositë', 'English': 'English', 'Albanian': 'Shqip', 'Table': 'Tavolina',
   'part paid': 'pjesërisht paguar', 'Waiting to print': 'Në pritje për printim', 'Set as sold out': 'Shëno s\'ka', 'Back in stock': 'Ka prapë',
-  'Refresh': 'Rifresko', 'Loading': 'Duke ngarkuar', 'Ticket sent to the printer': 'Tiketa u dërgua te printeri', 'Float given': 'Kusuri u dha',
+  'Refresh': 'Rifresko', 'Loading': 'Duke ngarkuar', 'Ticket sent to the printer': 'Tiketa u dërgua te printeri', 'Float given': 'Paratë fillestare u dhanë',
   'Payout recorded': 'Pagesa u regjistrua', 'Backup saved': 'Kopja rezervë u ruajt', 'Inactive': 'Joaktiv', 'Zone': 'Zona', 'Extra': 'Shtesë',
 };
 let lang = 'sq';

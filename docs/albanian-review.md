@@ -3,16 +3,20 @@
 Every piece of Albanian the staff can see, 217 strings, straight from `web/src/i18n.js`.
 Correct anything in the right hand column and I will put it back in the file. Left column is the English key, do not change it.
 
-## Things I am unsure about
+## Decided
 
-These are my own doubts, not corrections. You decide.
+Reviewed by Leonit, 21 Nov 2026.
 
-1. **Fshij të dhënat e provës** (Wipe test data). `Fshij` reads as "I delete". Should the button say `Fshi`?
-2. **Mbyll sesionet e pajisjeve të tjera** (Log out every other device). I wrote this one today and I am not confident it sounds natural.
-3. **Kusuri** is used both for the float a waiter starts with and for change given back. Is one word right for both?
-4. **pazarin** in "Disa nga stafi nuk e kanë dorëzuar pazarin". Right register for a cafe, or too colloquial?
-5. **Shëno s'ka** (Set as sold out) and **Ka prapë** (Back in stock). Short and spoken. Fine on a button?
-6. The app addresses staff informally throughout (`Kush je ti?`, `Emri yt`). Confirm that is what you want.
+| Question | Decision |
+| --- | --- |
+| `Fshij` or `Fshi` on the Wipe test data button | Keep **Fshij**. No sweep of other buttons needed. |
+| Wording for Log out every other device | Keep **Mbyll sesionet e pajisjeve të tjera**. |
+| `Kusuri` used for both the shift float and customer change | **Split.** Kusuri stays for change handed back. The shift float is now **Para fillestare**. |
+| `pazarin` for the day’s takings | Keep. It is what the cafe says. |
+| `Shëno s'ka` and `Ka prapë` on the bartender buttons | Keep. |
+| Informal `ti` throughout | Correct, keep it. |
+
+Also checked and found clean: every string the app uses has an Albanian entry, and none uses a dash as punctuation.
 
 ## All strings
 
@@ -96,7 +100,7 @@ These are my own doubts, not corrections. You decide.
 | Catch up mode is on: orders are recorded without printing. | Regjistrim pa printim: porositë ruhen pa tiketë. |
 | Open tables | Tavolina të hapura |
 | Cash to hand over so far | Para për dorëzim deri tani |
-| Starting change | Kusur fillestar |
+| Starting change | Para fillestare |
 | Cash sales | Shitje kesh |
 | Paid out | Paguar nga arka |
 | No session yet. It starts with your first order. | Ende s'ka sesion. Fillon me porosinë e parë. |
@@ -116,7 +120,7 @@ These are my own doubts, not corrections. You decide.
 | Catch up mode | Regjistrim pa printim |
 | Turn on | Aktivizo |
 | Turn off | Çaktivizo |
-| Give change money | Jep kusur fillestar |
+| Give change money | Jep para fillestare |
 | Settle | Dorëzo pazarin |
 | Owes | Duhet të dorëzojë |
 | Handed over | Dorëzoi |
@@ -229,7 +233,7 @@ These are my own doubts, not corrections. You decide.
 | Refresh | Rifresko |
 | Loading | Duke ngarkuar |
 | Ticket sent to the printer | Tiketa u dërgua te printeri |
-| Float given | Kusuri u dha |
+| Float given | Paratë fillestare u dhanë |
 | Payout recorded | Pagesa u regjistrua |
 | Backup saved | Kopja rezervë u ruajt |
 | Inactive | Joaktiv |
