@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { t } from './i18n.js';
 
 const Ctx = createContext(null);
@@ -15,7 +16,9 @@ export function useKeys(handler, active = true) {
   const ref = useRef(handler); ref.current = handler;
   useEffect(() => {
     if (!active) return undefined;
-    const k = (e) => ref.current(e);
+    // Draw the result of each key before the next one is read. Without this, keys typed faster than a redraw
+    // (a quick typist, a held key) all saw the old state: three arrows moved once and Enter found nothing.
+    const k = (e) => flushSync(() => ref.current(e));
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [active]);
@@ -130,7 +133,7 @@ const KEYS = [
   ['Everywhere', [['F1', 'This list of shortcuts'], ['Esc', 'Go back one step. On the tables screen with nothing open, log out'], ['F12', 'Lock the screen'], ['Alt 1 / 2 / 3', 'Tables, My session, Manager']]],
   ['Login', [['1 to 9', 'Pick the person with that number'], ['0 to 9', 'Type the PIN, it logs in by itself'], ['Esc', 'Back to the names']]],
   ['Tables', [['Table name, then Enter', 'Open that table'], ['Page Up / Page Down', 'Next or previous area'], ['F3', 'Switch between grid and plan']]],
-  ['Order', [['Letters', 'Find a drink by name'], ['Arrow up / down', 'Choose in the list found'], ['Enter', 'Add the drink found, or send to the bar'], ['0 to 9', 'How many of the next drink'], ['+ / -', 'One more or one less of the last drink'], ['Delete', 'Remove the last drink'], ['F2', 'Take payment'], ['F4', 'More: move, merge, discount, reprint']]],
+  ['Order', [['Arrows', 'Move over the drinks'], ['Page Up / Page Down', 'Previous or next category'], ['Enter', 'Add the highlighted drink'], ['Letters', 'Find a drink by name'], ['0 to 9', 'How many of the next drink'], ['Backspace', 'Erase what you typed'], ['+ / -', 'One more or one less of the last drink'], ['Delete', 'Remove the last drink'], ['F2', 'Send to the bar'], ['F3', 'More: move, merge, discount, reprint'], ['F4', 'Take payment']]],
   ['Payment', [['0 to 9', 'Cash received'], ['Enter', 'Paid in cash'], ['F8', 'On the house']]],
 ];
 function ShortcutHelp({ onClose }) {

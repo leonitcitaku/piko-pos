@@ -168,6 +168,22 @@ test('cafe POS', async (t) => {
     await setClock(3 * 60_000);
   });
 
+  await t.test('cancel only some of a line: five Amerikano, one spilled', async () => {
+    const free = ok(await w2.get('/api/tables')).tables.find((x) => !x.order_id);
+    const o = ok(await w2.post('/api/orders', { id: uid(), table_id: free.id }));
+    let v = ok(await w2.post(`/api/orders/${o.id}/items`, { batch_id: uid(), items: [{ product_id: product('Amerikano').id, qty: 5 }] }));
+    const line = v.items.find((i) => i.name === 'Amerikano');
+    const before = v.total_cents;
+    assert.equal((await w2.post(`/api/orders/${o.id}/cancel-item`, { item_id: line.id, qty: 6 })).status, 400, 'cannot cancel more than there are');
+    v = ok(await w2.post(`/api/orders/${o.id}/cancel-item`, { item_id: line.id, qty: 1 }));
+    const live = v.items.filter((i) => i.name === 'Amerikano' && i.status === 'sent'), gone = v.items.filter((i) => i.name === 'Amerikano' && i.status === 'void');
+    assert.equal(live.length, 1); assert.equal(live[0].qty, 4); assert.equal(gone.length, 1); assert.equal(gone[0].qty, 1);
+    assert.equal(v.total_cents, before - product('Amerikano').price_cents);
+    const ticket = (await tickets()).find((j) => j.kind === 'cancel' && j.order_id === o.id);
+    assert.equal(ticket.content.lines[0].qty, 1, 'the cancel ticket says one, not five');
+    ok(await w2.post(`/api/orders/${o.id}/pay`, { payment_id: uid() }));
+  });
+
   await t.test('split bill: four people pay separately, the table closes only after the last one', async () => {
     const o = await order(w2, '13', [['Makiato e madhe', 1], ['Kola', 1], ['Espresso', 1], ['Birre e madhe', 2]]);
     const [mak, kola, esp, beer] = o.items;

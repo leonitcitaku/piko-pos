@@ -40,8 +40,8 @@ export function Floor({ app }) {
   useEffect(() => { if (!typed) return undefined; const h = setTimeout(() => setTyped(''), 6000); return () => clearTimeout(h); }, [typed]);
   useKeys((e) => {
     if (!data) return;
-    if (e.key === 'F3') { e.preventDefault(); pickMode(mode === 'plan' ? 'grid' : 'plan'); return; }
     if (modalsOpen() || typingIn(e) || sel != null) return;
+    if (e.key === 'F3') { e.preventDefault(); pickMode(mode === 'plan' ? 'grid' : 'plan'); return; }
     if (e.key === 'PageDown' || e.key === 'PageUp') {
       e.preventDefault();
       const zs = data.zones, i = zs.findIndex((z) => z.id === zone);
@@ -113,6 +113,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
   const [send, setSend] = useState('idle');
   const [dlg, setDlg] = useState(null);
   const [showSent, setShowSent] = useState(false);
+  const kb = hasKeyboard();
   const ids = useRef({ order: uid(), batch: uid() });
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -122,9 +123,13 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
     get(`/api/orders/${table.order_id}`).then((o) => alive.current && setOrder(o)).catch(() => {});
   }, [table.order_id, table.due_cents, table.items]);
 
-  const [qtyNext, setQtyNext] = useState('');   // digits typed before choosing a drink: how many of it
-  const [find, setFind] = useState('');         // letters typed: find a drink by name, across every category
-  const [hit, setHit] = useState(0);
+  // Keyboard ordering. A highlight moves over the drinks with the arrows; Page Up / Page Down change category;
+  // letters search every category; digits say how many of the next drink; Enter adds the highlighted drink.
+  // Enter never sends: sending has its own key (F2), printed on the button.
+  const [qtyNext, setQtyNext] = useState('');
+  const [find, setFind] = useState('');
+  const [cur, setCur] = useState(-1);          // highlighted drink; -1 while only touch has been used
+  const gridRef = useRef(null);
   const add = (p, n) => {
     if (!p.available) return;
     const many = Math.min(99, Math.max(1, n ?? (Number(qtyNext) || 1)));
@@ -137,31 +142,48 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
   };
   const plain = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const found = find ? menu.products.filter((p) => plain(p.name).includes(plain(find))).sort((a, b) => b.available - a.available) : null;
-  const modsFor = (p) => menu.modifiers.filter((m) => m.category_id == null || m.category_id === p.category_id);
-  const cartLine = (c) => (c.product.price_cents + c.mods.reduce((s, id) => s + (menu.modifiers.find((m) => m.id === id)?.price_cents || 0), 0)) * c.qty;
-  const cartTotal = cart.reduce((s, c) => s + cartLine(c), 0);
-
+  const shown = found || menu.products.filter((p) => p.category_id === cat);
+  useEffect(() => { setCur((c) => (c < 0 ? c : 0)); }, [cat, find]);
+  useEffect(() => { if (cur >= 0) gridRef.current?.children[cur]?.scrollIntoView({ block: 'nearest' }); }, [cur]);
+  const columns = () => { const el = gridRef.current; if (!el) return 1; return Math.max(1, getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length); };
+  const stepCat = (d) => { const cs = menu.categories; if (!cs.length) return; const i = cs.findIndex((c) => c.id === cat); setCat(cs[(i + d + cs.length) % cs.length].id); setFind(''); setCur(0); };
   const lastBump = (d) => setCart((c) => { if (!c.length) return c; const l = c[c.length - 1], q = l.qty + d; return q < 1 ? c.slice(0, -1) : [...c.slice(0, -1), { ...l, qty: Math.min(99, q) }]; });
   useKeys((e) => {
     if (modalsOpen() || typingIn(e) || dlg) return;
-    const plainKey = !e.ctrlKey && !e.altKey && !e.metaKey;
-    if (e.key === 'F2') { e.preventDefault(); if (cart.length) toast(t('Send the new drinks first'), 'bad'); else if (order && unpaidCount) setDlg({ type: 'pay' }); return; }
-    if (e.key === 'F4') { e.preventDefault(); if (order) setDlg({ type: 'more' }); return; }
-    if (found) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setHit((h) => Math.min(h + 1, found.length - 1)); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setHit((h) => Math.max(h - 1, 0)); return; }
-      if (e.key === 'Enter') { e.preventDefault(); const p = found[Math.min(hit, found.length - 1)]; if (p && p.available) { add(p); setFind(''); setHit(0); } return; }
-      if (e.key === 'Backspace') { e.preventDefault(); setFind((f) => f.slice(0, -1)); setHit(0); return; }
-      if (e.key === 'Escape') { e.preventDefault(); setFind(''); setHit(0); return; }
+    const k = e.key, plainKey = !e.ctrlKey && !e.altKey && !e.metaKey;
+    if (k === 'F2') { e.preventDefault(); if (cart.length) sendCart(); return; }
+    if (k === 'F3') { e.preventDefault(); if (order) setDlg({ type: 'more' }); return; }
+    if (k === 'F4') { e.preventDefault(); if (cart.length) toast(t('Send the new drinks first'), 'bad'); else if (order && unpaidCount) setDlg({ type: 'pay' }); return; }
+    if (k === 'PageDown' || k === 'PageUp') { e.preventDefault(); stepCat(k === 'PageDown' ? 1 : -1); return; }
+    if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown') {
+      e.preventDefault();
+      if (!shown.length) return;
+      if (cur < 0) { setCur(0); return; }
+      const c = columns(), step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -c, ArrowDown: c }[k];
+      setCur(Math.min(shown.length - 1, Math.max(0, cur + step)));
+      return;
     }
-    if (plainKey && /^[\p{L} ]$/u.test(e.key) && (e.key !== ' ' || find)) { e.preventDefault(); setFind((f) => f + e.key); setHit(0); return; }
-    if (plainKey && /^[0-9]$/.test(e.key)) { e.preventDefault(); setQtyNext((q) => (q + e.key).replace(/^0+/, '').slice(0, 2)); return; }
-    if (e.key === '+' || e.key === 'Add') { e.preventDefault(); lastBump(1); return; }
-    if (e.key === '-' || e.key === 'Subtract') { e.preventDefault(); lastBump(-1); return; }
-    if (e.key === 'Delete') { e.preventDefault(); setCart((c) => c.slice(0, -1)); return; }
-    if (e.key === 'Escape') { e.preventDefault(); if (qtyNext) setQtyNext(''); else onClose(); return; }
-    if (e.key === 'Enter' && cart.length) { e.preventDefault(); sendCart(); }
+    if (k === 'Enter') {
+      e.preventDefault();
+      if (cur < 0) return;
+      const p = shown[cur];
+      if (!p) return;
+      if (!p.available) { toast(`${p.name}: ${t('Sold out')}`, 'bad'); return; }
+      add(p); setFind('');
+      return;
+    }
+    if (k === 'Backspace') { e.preventDefault(); if (find) setFind((f) => f.slice(0, -1)); else if (qtyNext) setQtyNext((q) => q.slice(0, -1)); return; }
+    if (k === 'Escape') { e.preventDefault(); if (find) setFind(''); else if (qtyNext) setQtyNext(''); else onClose(); return; }
+    if (plainKey && /^[\p{L} ]$/u.test(k) && (k !== ' ' || find)) { e.preventDefault(); setFind((f) => f + k); setCur(0); return; }
+    if (plainKey && /^[0-9]$/.test(k)) { e.preventDefault(); setQtyNext((q) => (q + k).replace(/^0+/, '').slice(0, 2)); if (cur < 0) setCur(0); return; }
+    if (k === '+' || k === 'Add') { e.preventDefault(); lastBump(1); return; }
+    if (k === '-' || k === 'Subtract') { e.preventDefault(); lastBump(-1); return; }
+    if (k === 'Delete') { e.preventDefault(); setCart((c) => c.slice(0, -1)); }
   });
+
+  const modsFor = (p) => menu.modifiers.filter((m) => m.category_id == null || m.category_id === p.category_id);
+  const cartLine = (c) => (c.product.price_cents + c.mods.reduce((s, id) => s + (menu.modifiers.find((m) => m.id === id)?.price_cents || 0), 0)) * c.qty;
+  const cartTotal = cart.reduce((s, c) => s + cartLine(c), 0);
 
   const sendCart = async () => {
     if (!cart.length || send !== 'idle') return;
@@ -174,7 +196,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
         if (!alive.current) return;
         setOrder(o); setCart([]); ids.current.batch = uid(); setSend('idle');
         toast(t('Sent')); reload(); app.afterAction();
-        if (!app.isPc) onClose();   // the PC goes back to the name list by itself
+        onClose();   // back to the tables, still logged in
         return;
       } catch (e) {
         if (e instanceof NetworkError) { setSend('retrying'); await sleep(2000); if (!alive.current) return; continue; } // same ids: the server ignores a repeat
@@ -185,12 +207,12 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
   };
 
   const afterChange = (o) => { if (o.closed || o.status !== 'open') { toast(t('Table closed')); reload(); onClose(); } else { setOrder(o); reload(); } };
-  const cancelItem = async (it, reason) => {
+  const cancelItem = async (it, reason, qty = it.qty) => {
     try {
-      const o = await withApproval(ui, (pin) => post(`/api/orders/${order.id}/cancel-item`, { item_id: it.id, reason, pin }));
+      const o = await withApproval(ui, (pin) => post(`/api/orders/${order.id}/cancel-item`, { item_id: it.id, qty, reason, pin }));
       if (o) { setDlg(null); afterChange(o); }
     } catch (e) {
-      if (e.code === 'reason_required') setDlg({ type: 'reason', item: it });
+      if (e.code === 'reason_required') setDlg({ type: 'reason', item: it, qty });
       else toast(errText(e), 'bad');
     }
   };
@@ -207,7 +229,7 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
       <header className="order-head">
         <button className="btn ghost back" onClick={onClose}>‹ {t('Tables')}</button>
         <div className="order-title"><b>{t('Table')} {table.name}</b>{order && <small>{order.waiter_name} · {clock(order.opened_at)}</small>}</div>
-        {order && <button className="btn" onClick={() => setDlg({ type: 'more' })}>{t('More')}</button>}
+        {order && <button className="btn" onClick={() => setDlg({ type: 'more' })}>{t('More')} {kb && <kbd className="key-hint">F3</kbd>}</button>}
       </header>
 
       <div className="order-scroll">
@@ -236,14 +258,14 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
           <div className="findbar">
             {qtyNext && <span className="pill warn">{qtyNext} ×</span>}
             {find && <span>{t('Find')}: <b>{find}</b></span>}
-            {find && <small className="muted">↑ ↓ · ↵ · Esc</small>}
+            <small className="muted">← ↑ ↓ → · ↵ · ⌫ · Esc</small>
           </div>
         )}
         {!found && <div className="cats">{menu.categories.map((c) => <button key={c.id} className={cat === c.id ? 'on' : ''} onClick={() => setCat(c.id)}>{c.name}</button>)}</div>}
         {found && !found.length && <p className="muted pad">{t('Nothing found')}</p>}
-        <div className="products">
-          {(found || menu.products.filter((p) => p.category_id === cat)).map((p, i) => (
-            <button key={p.id} className={'product' + (p.available ? '' : ' out') + (found && i === hit ? ' hit' : '')} onClick={() => { add(p); setFind(''); }} disabled={!p.available}>
+        <div className="products" ref={gridRef}>
+          {shown.map((p, i) => (
+            <button key={p.id} className={'product' + (p.available ? '' : ' out') + (i === cur ? ' hit' : '')} onClick={() => { add(p); setFind(''); }} disabled={!p.available}>
               <b>{p.name}</b><span>{p.available ? money(p.price_cents) : t('Sold out')}</span>
             </button>
           ))}
@@ -267,12 +289,12 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
         <div className="foot-row">
           {cart.length > 0 ? (
             <button className="btn primary big grow" onClick={sendCart} disabled={send !== 'idle'}>
-              {send === 'idle' ? `${t('Send to bar')} · ${money(cartTotal)}` : send === 'sending' ? t('Sending') + '…' : t('Retrying') + '…'}
+              {send === 'idle' ? `${t('Send to bar')} · ${money(cartTotal)}` : send === 'sending' ? t('Sending') + '…' : t('Retrying') + '…'} {kb && <kbd className="key-hint">F2</kbd>}
             </button>
           ) : (
             <>
               <div className="due-box"><small>{t('Due')}</small><b>{money(order?.due_cents || 0)}</b></div>
-              <button className="btn primary big grow" disabled={!unpaid.length} onClick={() => setDlg({ type: 'pay' })}>{t('Pay')}</button>
+              <button className="btn primary big grow" disabled={!unpaid.length} onClick={() => setDlg({ type: 'pay' })}>{t('Pay')} {kb && <kbd className="key-hint">F4</kbd>}</button>
             </>
           )}
         </div>
@@ -299,12 +321,15 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
       {dlg?.type === 'item' && (
         <Modal title={`${dlg.item.qty} × ${dlg.item.name}`} onClose={() => setDlg(null)}>
           <p className="muted">{dlg.item.sent_by_name} · {clock(dlg.item.sent_at)}</p>
-          <button className="btn danger big" onClick={() => cancelItem(dlg.item)}>{t('Cancel item')}</button>
+          {dlg.item.qty > 1 && <><p>{t('How many to cancel')}</p><Stepper value={dlg.qty ?? 1} min={1} max={dlg.item.qty} onChange={(n) => setDlg({ ...dlg, qty: n })} /></>}
+          <button className="btn danger big" onClick={() => cancelItem(dlg.item, undefined, dlg.qty ?? 1)}>
+            {t('Cancel')} {dlg.qty ?? 1} × {dlg.item.name}
+          </button>
         </Modal>
       )}
       {dlg?.type === 'reason' && (
         <Modal title={t('Why is it cancelled?')} onClose={() => setDlg(null)}>
-          <div className="stack">{['mistake', 'spilled', 'customer left', 'other'].map((r) => <button key={r} className="btn big" onClick={() => cancelItem(dlg.item, r)}>{t(r)}</button>)}</div>
+          <div className="stack">{['mistake', 'spilled', 'customer left', 'other'].map((r) => <button key={r} className="btn big" onClick={() => cancelItem(dlg.item, r, dlg.qty)}>{t(r)}</button>)}</div>
         </Modal>
       )}
 

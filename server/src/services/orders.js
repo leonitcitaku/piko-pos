@@ -168,6 +168,9 @@ export function cancelItem(ctx, orderId, body) {
     if (!it) throw bad('no_item');
     if (it.status !== 'sent') return orderView(orderId);
     if (it.payment_id) throw conflict('item_paid', 'This item is already paid');
+    // Five Amerikano on one line, one spilled: cancel just that one. Missing qty means the whole line.
+    const qty = body.qty == null ? it.qty : int(body.qty, 'qty');
+    if (qty < 1 || qty > it.qty) throw bad('bad_qty');
     const windowMs = Number(getSetting('cancel_window_sec', '120')) * 1000;
     const quick = it.sent_by === ctx.user.id && now() - it.sent_at <= windowMs;
     const reason = String(body.reason || (quick ? 'mistake' : '')).slice(0, 60);
@@ -176,12 +179,20 @@ export function cancelItem(ctx, orderId, body) {
       if (!reason) throw bad('reason_required');
       approver = approve(ctx, body.pin);
     }
-    run("UPDATE order_items SET status = 'void', void_reason = ?, void_by = ?, voided_at = ? WHERE id = ?", reason, approver?.id ?? ctx.user.id, now(), it.id);
-    audit(ctx, quick ? 'quick_cancel' : 'void', orderId, { item: it.name, qty: it.qty, reason, approved_by: approver?.id ?? null });
+    // Part of a line: the line keeps the rest, and the cancelled ones become a line of their own, so every
+    // report, ticket and the audit see exactly what was cancelled, sent by whom and when.
+    let voidId = it.id;
+    if (qty < it.qty) {
+      run('UPDATE order_items SET qty = ? WHERE id = ?', it.qty - qty, it.id);
+      voidId = Number(run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, discount_pct, status, batch_id, sent_by, sent_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, orderId, it.product_id, it.name, it.price_cents, it.vat_rate, qty, it.modifiers, it.note, it.discount_pct, 'sent', it.batch_id, it.sent_by, it.sent_at).lastInsertRowid);
+    }
+    run("UPDATE order_items SET status = 'void', void_reason = ?, void_by = ?, voided_at = ? WHERE id = ?", reason, approver?.id ?? ctx.user.id, now(), voidId);
+    audit(ctx, quick ? 'quick_cancel' : 'void', orderId, { item: it.name, qty, of: it.qty, reason, approved_by: approver?.id ?? null });
     const day = requireDay();
     if (!day.catch_up) {
       enqueueTicket({ day_id: day.id, order_id: orderId, batch_id: null, user_id: ctx.user.id, kind: 'cancel',
-        content: ticketContent(orderId, [{ ...it, modifiers: JSON.parse(it.modifiers) }], { waiter: ctx.user.name }), original_time: now() });
+        content: ticketContent(orderId, [{ ...it, qty, modifiers: JSON.parse(it.modifiers) }], { waiter: ctx.user.name }), original_time: now() });
     }
     closeIfDone(ctx, orderId);
     broadcast('tables');

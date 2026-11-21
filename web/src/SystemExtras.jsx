@@ -1,5 +1,6 @@
 // The printers installed on this PC, and the database with its backups. Manager and owner only.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { get, post, upload, money, dateTime } from './api.js';
 import { t } from './i18n.js';
 import { Modal, useUi } from './ui.jsx';
@@ -109,5 +110,34 @@ export function Backups({ owner }) {
         </Modal>
       )}
     </section>
+  );
+}
+
+// A card to print and stand on the bar: the cafe's name, a big QR code and the address under it.
+// Printed on its own; the rest of the screen is hidden while printing.
+export function QrPrint({ url, cafe }) {
+  const [on, setOn] = useState(false);
+  const img = useRef(null);
+  useEffect(() => {
+    if (!on) return undefined;
+    document.body.classList.add('print-qr');
+    const done = () => { document.body.classList.remove('print-qr'); setOn(false); };
+    window.addEventListener('afterprint', done);
+    const go = () => setTimeout(() => window.print(), 50);
+    if (img.current?.complete) go(); else img.current?.addEventListener('load', go, { once: true });
+    return () => { window.removeEventListener('afterprint', done); document.body.classList.remove('print-qr'); };
+  }, [on]);
+  return (
+    <>
+      <button className="btn" onClick={() => setOn(true)}>{t('Print the QR code')}</button>
+      {on && createPortal(
+        <div className="qr-print">
+          <h1>{cafe}</h1>
+          <p>{t('Scan to open the POS on your phone')}</p>
+          <img ref={img} src={'/api/system/qr.svg?url=' + encodeURIComponent(url)} alt="QR" />
+          <strong>{url}</strong>
+          <small>{t('Connect to the cafe Wi-Fi first.')}</small>
+        </div>, document.body)}
+    </>
   );
 }

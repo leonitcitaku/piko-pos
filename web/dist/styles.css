@@ -244,3 +244,18 @@ kbd { font: 600 .78rem/1 ui-monospace, Menlo, Consolas, monospace; padding: 3px 
 .keyhelp h3 { margin: 10px 0 6px; font-size: 1rem; }
 .keyhelp dl { margin: 0; display: grid; gap: 6px; } .keyhelp dl div { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: baseline; } .keyhelp dd { margin: 0; color: var(--muted); }
 .keyhelp dl div { grid-template-columns: minmax(130px, 42%) 1fr; } .keyhelp kbd { white-space: normal; display: inline-block; line-height: 1.25; }
+.key-hint { margin-left: 6px; font-size: .7rem; padding: 2px 5px; vertical-align: middle; opacity: .8; }
+
+/* ---- printable QR card ---- */
+.qr-print { display: none; }
+@media print {
+  body.print-qr > *:not(.qr-print) { display: none !important; }
+  body.print-qr { background: #fff !important; }
+  body.print-qr .qr-print { display: grid; justify-items: center; gap: 10mm; padding-top: 25mm; text-align: center; color: #000; font-family: system-ui, sans-serif; }
+  .qr-print h1 { font-size: 30pt; margin: 0; }
+  .qr-print p { font-size: 16pt; margin: 0; }
+  .qr-print img { width: 110mm; height: 110mm; image-rendering: pixelated; }
+  .qr-print strong { font-size: 20pt; letter-spacing: .02em; }
+  .qr-print small { font-size: 12pt; color: #444; }
+}
+.keep-address { margin: 14px 0; }
