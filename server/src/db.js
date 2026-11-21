@@ -78,6 +78,8 @@ const MIGRATIONS = [
   );
   CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `,
+  // 2: remember when a device last got a PIN wrong, so the lockout can grow and then be forgotten.
+  `ALTER TABLE pin_attempts ADD COLUMN last_fail INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function openDb(dir) {

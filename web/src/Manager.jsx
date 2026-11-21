@@ -409,6 +409,16 @@ function SystemTab({ app }) {
       <div className="row"><button className="btn" onClick={async () => { if (await act(() => post('/api/system/backup'), t('Backup saved'))) load(); }}>{t('Back up now')}</button></div>
       {app.user.role === 'owner' && (
         <section className="danger-zone">
+          <h2>{t('Log out every other device')}</h2>
+          <p>{t('For a phone that was lost. Everyone has to type their PIN again. This screen stays logged in.')}</p>
+          <button className="btn danger" onClick={async () => {
+            const r = await act(() => post('/api/system/logout-all'));
+            if (r) ui.toast(`${t('Devices logged out')}: ${r.logged_out}`);
+          }}>{t('Log out every other device')}</button>
+        </section>
+      )}
+      {app.user.role === 'owner' && (
+        <section className="danger-zone">
           <h2>{t('Wipe test data')}</h2>
           <p>{t('This deletes every sale, ticket and report. The menu, tables and staff stay. Close the day first.')}</p>
           <button className="btn danger" onClick={async () => { const pin = await ui.askPin(t('Owner PIN')); if (pin && await act(() => post('/api/system/reset', { pin }), t('Test data wiped.'))) { load(); app.reloadInfo(); } }}>{t('Wipe test data')}</button>

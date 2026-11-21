@@ -3,8 +3,18 @@ import { get, all, run, checkPin, hashPin } from './db.js';
 import { HttpError, bad } from './http.js';
 import { now } from './clock.js';
 
-const MAX_TRIES = 5, LOCK_MS = 60_000;
+const MAX_TRIES = 5;
+// Each further round of wrong PINs locks the device for longer, so guessing a PIN
+// stops being a matter of waiting. An hour after the last lock ends, the slate is wiped.
+const LOCK_STEPS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+const FORGET_MS = 60 * 60_000;
+// A phone left logged in forever is a key that never expires. Unused for this long, it stops working.
+const TOKEN_IDLE_MS = 14 * 24 * 60 * 60_000;
 export const APPROVERS = ['manager', 'owner'];
+// Managers and owners approve voids, free drinks and discounts, so their PIN is worth guessing.
+export const pinRule = (role) => (APPROVERS.includes(role)
+  ? { re: /^\d{6}$/,   message: 'A manager or owner PIN must be 6 digits' }
+  : { re: /^\d{4,6}$/, message: 'PIN must be 4 to 6 digits' });
 
 export function assertNotLocked(device) {
   const a = get('SELECT * FROM pin_attempts WHERE device = ?', device);
@@ -14,11 +24,15 @@ export function assertNotLocked(device) {
 }
 function wrongPin(device) {
   const a = get('SELECT * FROM pin_attempts WHERE device = ?', device);
-  const count = (a && a.locked_until <= now() && a.count >= MAX_TRIES ? 0 : (a?.count || 0)) + 1;
-  const locked = count >= MAX_TRIES ? now() + LOCK_MS : 0;
-  run('INSERT INTO pin_attempts(device, count, locked_until) VALUES(?,?,?) ON CONFLICT(device) DO UPDATE SET count = excluded.count, locked_until = excluded.locked_until',
-    device, count, locked);
-  throw new HttpError(401, 'wrong_pin', 'Wrong PIN', { tries_left: Math.max(0, MAX_TRIES - count) });
+  const forgotten = !a || (a.last_fail > 0 && now() - a.last_fail > FORGET_MS);
+  const count = (forgotten ? 0 : a.count) + 1;
+  const atLimit = count % MAX_TRIES === 0;
+  const round = Math.floor(count / MAX_TRIES);
+  const locked = atLimit ? now() + LOCK_STEPS[Math.min(round - 1, LOCK_STEPS.length - 1)] : (forgotten ? 0 : a.locked_until);
+  run(`INSERT INTO pin_attempts(device, count, locked_until, last_fail) VALUES(?,?,?,?)
+       ON CONFLICT(device) DO UPDATE SET count = excluded.count, locked_until = excluded.locked_until, last_fail = excluded.last_fail`,
+    device, count, locked, now());
+  throw new HttpError(401, 'wrong_pin', 'Wrong PIN', { tries_left: MAX_TRIES - (count % MAX_TRIES || MAX_TRIES) });
 }
 const clearTries = (device) => run('DELETE FROM pin_attempts WHERE device = ?', device);
 
@@ -37,10 +51,19 @@ export const publicUser = (u) => ({ id: u.id, name: u.name, role: u.role, langua
 
 export function userFromToken(token) {
   if (!token) return null;
-  const row = get('SELECT u.* FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ? AND u.active = 1', token);
+  const row = get('SELECT u.*, t.last_seen FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ? AND u.active = 1', token);
   if (!row) return null;
-  run('UPDATE auth_tokens SET last_seen = ? WHERE token = ?', now(), token);
+  if (now() - row.last_seen > TOKEN_IDLE_MS) { run('DELETE FROM auth_tokens WHERE token = ?', token); return null; }
+  // Only ever forward, like the clock guard. If the PC clock jumps back a year, stamping last_seen
+  // into the past would log the whole cafe out the moment someone fixed the clock.
+  if (now() > row.last_seen) run('UPDATE auth_tokens SET last_seen = ? WHERE token = ?', now(), token);
   return publicUser(row);
+}
+
+// Everyone off, except the screen the owner is standing at. For a phone that went missing.
+export function logoutEveryoneElse(keepToken) {
+  const r = run('DELETE FROM auth_tokens WHERE token != ?', keepToken ?? '');
+  return Number(r.changes || 0);
 }
 
 export const logout = (token) => run('DELETE FROM auth_tokens WHERE token = ?', token);
@@ -69,7 +92,8 @@ export function requireOwnerPin(ctx, pin) {
 
 export function createUser({ name, pin, role, language = 'sq' }) {
   if (!name || !String(name).trim()) throw bad('name_required');
-  if (!/^\d{4,6}$/.test(String(pin))) throw bad('bad_pin', 'PIN must be 4 to 6 digits');
+  const rule = pinRule(role);
+  if (!rule.re.test(String(pin))) throw bad('bad_pin', rule.message);
   const { salt, hash } = hashPin(pin);
   const r = run('INSERT INTO users(name, pin_hash, pin_salt, role, language) VALUES(?,?,?,?,?)', String(name).trim(), hash, salt, role, language);
   return Number(r.lastInsertRowid);

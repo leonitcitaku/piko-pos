@@ -185,8 +185,13 @@ export function registerRoutes(r, cfg) {
     if (!STAFF.includes(next.role)) throw bad('bad_role');
     if (u.role === 'owner' && (next.role !== 'owner' || !next.active) && get("SELECT COUNT(*) AS n FROM users WHERE role = 'owner' AND active = 1").n <= 1) throw conflict('last_owner', 'There must be at least one owner');
     run('UPDATE users SET name = ?, role = ?, language = ?, active = ? WHERE id = ?', next.name, next.role, next.language, next.active, id);
+    // Promoting someone into an approver role needs a fresh 6 digit PIN, or they would
+    // keep approving voids and free drinks with the 4 digits they had as a waiter.
+    const becomingApprover = auth.APPROVERS.includes(next.role) && !auth.APPROVERS.includes(u.role);
+    if (becomingApprover && (b.pin == null || b.pin === '')) throw bad('pin_required', 'Set a 6 digit PIN when making someone a manager or owner');
     if (b.pin != null && b.pin !== '') {
-      if (!/^\d{4,6}$/.test(String(b.pin))) throw bad('bad_pin', 'PIN must be 4 to 6 digits');
+      const rule = auth.pinRule(next.role);
+      if (!rule.re.test(String(b.pin))) throw bad('bad_pin', rule.message);
       const { salt, hash } = hashPin(b.pin);
       run('UPDATE users SET pin_hash = ?, pin_salt = ? WHERE id = ?', hash, salt, id);
       auth.logoutUser(id);
@@ -234,6 +239,12 @@ export function registerRoutes(r, cfg) {
   });
   r.get('/api/system/qr.svg', { roles: STAFF }, (c) => ({ __raw: qrSvg(c.query.url || lanUrls(cfg.port)[0] || `http://localhost:${cfg.port}`), type: 'image/svg+xml' }));
   r.post('/api/system/backup', { roles: BOSS }, async () => runBackup('manual'));
+  // For a phone that went missing: every other device has to log in again. This screen stays in.
+  r.post('/api/system/logout-all', { roles: OWNER }, (c) => {
+    const n = auth.logoutEveryoneElse(c.token);
+    audit(c, 'logout_all', null, { devices: n });
+    return { logged_out: n };
+  });
   r.post('/api/system/test-print', { roles: BOSS }, (c) => {
     const id = enqueueTicket({ day_id: orders.currentDay()?.id ?? null, user_id: c.user.id, kind: 'test', content: { cafe: getSetting('cafe_name', 'Cafe') } });
     return { job_id: id };

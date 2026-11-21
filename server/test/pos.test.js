@@ -10,7 +10,7 @@ let app, base, printer;
 let owner, manager, w1, w2, w3, bar;          // clients
 const ids = {};                                // user ids
 let menu, tables;
-const PIN = { owner: '9999', manager: '8888', w1: '1111', w2: '2222', w3: '3333', bar: '4444' };
+const PIN = { owner: '999999', manager: '888888', w1: '1111', w2: '2222', w3: '3333', bar: '4444' };  // approvers need 6 digits
 
 const ok = (r, msg) => { assert.equal(r.status, 200, `${msg || ''} ${JSON.stringify(r.data)}`); return r.data; };
 const product = (name) => menu.products.find((p) => p.name === name);
@@ -342,5 +342,63 @@ test('cafe POS', async (t) => {
     assert.equal(ok(await owner.get('/api/reports/days')).length, 0);
     assert.equal(ok(await owner.get('/api/admin/all')).users.length, 6);
     assert.equal(ok(await owner.get('/api/menu')).products.length, menu.products.length);
+  });
+
+  await t.test('a manager or owner PIN must be 6 digits, including on promotion', async () => {
+    assert.equal((await owner.post('/api/admin/users', { name: 'Shkurt', pin: '1234', role: 'manager' })).status, 400);
+    assert.equal((await owner.post('/api/admin/users', { name: 'Shkurt', pin: '1234', role: 'owner' })).status, 400);
+    const id = ok(await owner.post('/api/admin/users', { name: 'Vogel', pin: '1234', role: 'waiter' })).id;
+    // Promoting a waiter must not leave them approving voids with the 4 digits they already had.
+    let r = await owner.put(`/api/admin/users/${id}`, { role: 'manager' });
+    assert.equal(r.status, 400); assert.equal(r.data.error, 'pin_required');
+    assert.equal((await owner.put(`/api/admin/users/${id}`, { role: 'manager', pin: '1234' })).status, 400);
+    ok(await owner.put(`/api/admin/users/${id}`, { role: 'manager', pin: '775533' }));
+    ok(await owner.put(`/api/admin/users/${id}`, { active: false }));   // tidy up
+  });
+
+  await t.test('the lockout gets longer every round, so guessing a PIN is not just waiting', async () => {
+    const c = client(base);
+    const wrong = () => c.post('/api/auth/login', { user_id: ids.w2, pin: '000000' });
+    for (let i = 0; i < 5; i++) await wrong();
+    let r = await c.post('/api/auth/login', { user_id: ids.w2, pin: PIN.w2 });
+    assert.equal(r.status, 429);
+    assert.ok(r.data.retry_in_sec <= 60, `first lock is a minute, got ${r.data.retry_in_sec}`);
+
+    await setClock(61_000);                       // wait it out, then keep guessing
+    for (let i = 0; i < 5; i++) await wrong();
+    r = await c.post('/api/auth/login', { user_id: ids.w2, pin: PIN.w2 });
+    assert.equal(r.status, 429);
+    assert.ok(r.data.retry_in_sec > 60, `second lock must be longer than a minute, got ${r.data.retry_in_sec}`);
+
+    await setClock(61_000 + 5 * 60_000 + 1000);   // the five minutes pass, the real PIN works again
+    ok(await c.post('/api/auth/login', { user_id: ids.w2, pin: PIN.w2 }));
+    await setClock(0);
+  });
+
+  await t.test('a phone left unused for two weeks stops working', async () => {
+    // The clock route is public, so drive it from a client of its own: once the clock moves
+    // two weeks on, every idle token has legitimately expired, the test's own included.
+    const clock = client(base);
+    const jump = (ms) => clock.post('/api/test/clock', { offset_ms: ms });
+    const phone = client(base);
+    ok(await phone.post('/api/auth/login', { user_id: ids.w3, pin: PIN.w3 }));
+    ok(await phone.get('/api/auth/me'));
+    await jump(15 * 24 * 3600_000);
+    assert.equal((await phone.get('/api/tables')).status, 401, 'an idle token must stop working');
+    await jump(0);
+    ok(await phone.post('/api/auth/login', { user_id: ids.w3, pin: PIN.w3 }), 'and logging in again works');
+  });
+
+  await t.test('the owner can log every other device out and stay in', async () => {
+    ok(await owner.post('/api/auth/login', { user_id: ids.owner ?? 1, pin: PIN.owner }));
+    ok(await manager.post('/api/auth/login', { user_id: ids.manager, pin: PIN.manager }));
+    const phone = client(base);
+    ok(await phone.post('/api/auth/login', { user_id: ids.w1, pin: PIN.w1 }));
+    ok(await phone.get('/api/tables'));
+    const r = ok(await owner.post('/api/system/logout-all'));
+    assert.ok(r.logged_out >= 1, 'something was logged out');
+    assert.equal((await phone.get('/api/tables')).status, 401, 'the other phone is out');
+    ok(await owner.get('/api/tables'), 'the owner keeps the screen they are standing at');
+    assert.equal((await manager.get('/api/day')).status, 401, 'the manager is out too');
   });
 });
