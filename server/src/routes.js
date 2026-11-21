@@ -176,6 +176,8 @@ export function registerRoutes(r, cfg) {
       setSetting(k, String(v).slice(0, 200));
     }
     audit(c, 'settings', null, c.body);
+    // A printer that was just changed starts with a clean slate: the old one's failure must not stay on every screen.
+    if (Object.keys(c.body || {}).some((k) => k.startsWith('printer_'))) { printerState.ok = true; printerState.error = null; broadcast('printer', { ok: true }); }
     setImmediate(pump);
     return { ok: true };
   });
