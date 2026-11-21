@@ -43,13 +43,21 @@ const localUrl = () => `http://localhost${info.port === 80 ? '' : ':' + info.por
 const wifiUrl = () => (info && info.urls && info.urls[0]) || '';
 
 function createWindow() {
-  win = new BrowserWindow({ width: 1366, height: 800, minWidth: 1000, minHeight: 640, autoHideMenuBar: true, title: 'Cafe POS', backgroundColor: '#1f4d3a' });
+  // The till owns the whole screen: no title bar, no borders, no menu. The ▁ button in the app minimises it,
+  // F11 leaves and re-enters full screen, and quitting stays in the tray menu behind the manager PIN.
+  win = new BrowserWindow({ width: 1366, height: 800, minWidth: 1000, minHeight: 640, frame: false, fullscreen: true, autoHideMenuBar: true,
+    title: 'Cafe POS', backgroundColor: '#1f4d3a', webPreferences: { preload: path.join(__dirname, 'preload.cjs') } });
   win.loadURL(localUrl());
+  // A blank window is never acceptable. If the page did not load (the server was still starting, or was
+  // restarting), try again; if the page itself crashed, load it afresh.
+  win.webContents.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => { if (isMainFrame && code !== -3) setTimeout(() => { if (win && info) win.loadURL(localUrl()); }, 1200); });
+  win.webContents.on('render-process-gone', () => setTimeout(() => { if (win && info) win.loadURL(localUrl()); }, 800));
+  win.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); } });
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   // Closing the window must not stop the POS: phones would drop mid service. It goes to the tray instead.
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
 }
-function showWindow() { if (!win) { if (info) createWindow(); return; } win.show(); win.focus(); }
+function showWindow() { if (!win) { if (info) createWindow(); return; } if (win.isMinimized()) win.restore(); win.show(); win.setFullScreen(true); win.focus(); }
 
 function refreshTray() {
   if (!tray) return;
@@ -72,6 +80,7 @@ function askQuit() {
     title: 'Quit Cafe POS', webPreferences: { preload: path.join(__dirname, 'preload.cjs') } });
   w.loadFile(path.join(__dirname, 'quit.html'));
 }
+ipcMain.handle('win-minimise', () => { if (win) win.minimize(); });
 ipcMain.handle('quit-with-pin', async (_e, pin) => {
   if (!info) { quitting = true; app.quit(); return { ok: true }; }
   try {

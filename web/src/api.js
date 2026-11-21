@@ -12,7 +12,11 @@ export async function api(method, url, body) {
   } catch { throw new NetworkError('offline'); }
   const text = await res.text();
   let data; try { data = JSON.parse(text); } catch { data = text; }
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) {
+    // The login ran out or was ended from another screen: go back to the name list instead of showing a broken page.
+    if (res.status === 401 && data?.error === 'not_logged_in') window.dispatchEvent(new Event('pos-logged-out'));
+    throw new ApiError(res.status, data);
+  }
   return data;
 }
 export const get = (u) => api('GET', u);
@@ -32,15 +36,40 @@ export const toCents = (text) => { const n = Number(String(text).replace(',', '.
 export const clock = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 export const dateTime = (ms) => { if (!ms) return ''; const d = new Date(ms); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${clock(ms)}`; };
 
-// Live updates. Reconnects by itself; on every reconnect the screen reloads its data so nothing is missed.
+// Live updates. One connection for the whole app, however many parts of the screen are listening.
+// It reconnects by itself; on every reconnect the screens reload their data so nothing is missed.
+const TYPES = ['hello', 'tables', 'menu', 'day', 'printer', 'tickets', 'ticket_failed'];
+const listeners = new Set();
+let source = null;
+function connect() {
+  source = new EventSource('/api/events');
+  for (const type of TYPES) {
+    source.addEventListener(type, (e) => {
+      let d = {}; try { d = JSON.parse(e.data); } catch { /* ignore */ }
+      for (const l of listeners) { l.current[type]?.(d); l.current.any?.(type, d); }
+    });
+  }
+  source.onerror = () => {
+    for (const l of listeners) l.current.offline?.();
+    if (source && source.readyState === 2) source = null;          // refused for good (logged out): start fresh next time
+  };
+}
 export function useEvents(handlers, enabled = true) {
   const ref = useRef(handlers); ref.current = handlers;
   useEffect(() => {
     if (!enabled) return undefined;
-    const es = new EventSource('/api/events');
-    const on = (type) => (e) => { let d = {}; try { d = JSON.parse(e.data); } catch { /* ignore */ } ref.current[type]?.(d); ref.current.any?.(type, d); };
-    for (const type of ['hello', 'tables', 'menu', 'day', 'printer', 'tickets', 'ticket_failed']) es.addEventListener(type, on(type));
-    es.onerror = () => ref.current.offline?.();
-    return () => es.close();
+    listeners.add(ref);
+    if (!source) connect();
+    return () => { listeners.delete(ref); if (!listeners.size && source) { source.close(); source = null; } };
   }, [enabled]);
+}
+
+// Send a file as the request body (a backup brought on a USB stick).
+export async function upload(url, file) {
+  let res;
+  try { res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, credentials: 'same-origin' }); }
+  catch { throw new NetworkError('offline'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data);
+  return data;
 }

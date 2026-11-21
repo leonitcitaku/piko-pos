@@ -39,6 +39,9 @@ export function Modal({ title, children, onClose, wide }) {
   );
 }
 
+// The pad's buttons never take keyboard focus, so a key press cannot land on one of them.
+const noFocus = { tabIndex: -1, onMouseDown: (e) => e.preventDefault() };
+
 // len: how long this PIN must be. 4 for staff, 6 for a manager or owner (and so for every approval).
 export function PinPad({ onDone, error, busy, len = 6 }) {
   const [pin, setPin] = useState('');
@@ -48,7 +51,8 @@ export function PinPad({ onDone, error, busy, len = 6 }) {
   // PIN lengths are exact, so a complete PIN sends itself. OK stays for PINs set before that rule.
   useEffect(() => { if (pin.length === len && !busy) submit(); }, [pin]);
   useEffect(() => {
-    const k = (e) => { if (/^\d$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') setPin((p) => p.slice(0, -1)); else if (e.key === 'Enter') submit(); };
+    // Enter and Space must not also "click" whichever digit button was touched last: that typed an extra digit.
+    const k = (e) => { if (/^\d$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') setPin((p) => p.slice(0, -1)); else if (e.key === 'Enter') { e.preventDefault(); submit(); } else if (e.key === ' ') e.preventDefault(); };
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, []);
   return (
@@ -56,10 +60,10 @@ export function PinPad({ onDone, error, busy, len = 6 }) {
       <div className={'pin-dots' + (error ? ' shake' : '')} aria-label="PIN">{[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className={i < pin.length ? 'on' : ''} />)}</div>
       {error && <p className="pin-error">{error}</p>}
       <div className="keys">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => <button key={d} onClick={() => press(d)}>{d}</button>)}
-        <button className="quiet" onClick={() => setPin((p) => p.slice(0, -1))} aria-label="delete">⌫</button>
-        <button onClick={() => press('0')}>0</button>
-        <button className="go" disabled={pin.length < 4 || busy} onClick={submit}>OK</button>
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => <button key={d} {...noFocus} onClick={() => press(d)}>{d}</button>)}
+        <button className="quiet" {...noFocus} onClick={() => setPin((p) => p.slice(0, -1))} aria-label="delete">⌫</button>
+        <button {...noFocus} onClick={() => press('0')}>0</button>
+        <button className="go" {...noFocus} disabled={pin.length < 4 || busy} onClick={submit}>OK</button>
       </div>
     </div>
   );
@@ -76,3 +80,20 @@ export function Stepper({ value, min = 0, max = 99, onChange }) {
 }
 
 export const Field = ({ label, children }) => <label className="field"><span>{label}</span>{children}</label>;
+
+// If any screen throws while drawing, show what happened and a way back, never a blank page.
+export class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error('Screen crashed:', error, info); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="gate"><div className="gate-card">
+        <h1>{t('Something went wrong on this screen.')}</h1>
+        <p className="muted">{String(this.state.error?.message || this.state.error)}</p>
+        <button className="btn primary big" onClick={() => location.reload()}>{t('Reload')}</button>
+      </div></div>
+    );
+  }
+}

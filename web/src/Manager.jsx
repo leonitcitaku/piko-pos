@@ -3,6 +3,8 @@ import { get, post, put, money, toCents, clock, dateTime, useEvents } from './ap
 import { t } from './i18n.js';
 import { Modal, useUi, Field } from './ui.jsx';
 import { errText } from './util.js';
+import { RangeReport, StaffProfiles } from './Insights.jsx';
+import { PrinterFinder, Backups } from './SystemExtras.jsx';
 
 const TABS = ['Day', 'Tickets', 'Report', 'Menu', 'Staff', 'Tables', 'Settings', 'System', 'Log'];
 
@@ -170,6 +172,18 @@ function TicketsTab({ app }) {
 
 // ---------------------------------------------------------------- Report
 function ReportTab() {
+  const [mode, setMode] = useState('period');
+  return (
+    <>
+      <div className="seg noprint">
+        <button className={mode === 'period' ? 'on' : ''} onClick={() => setMode('period')}>{t('By period')}</button>
+        <button className={mode === 'shift' ? 'on' : ''} onClick={() => setMode('shift')}>{t('One business day in detail')}</button>
+      </div>
+      {mode === 'period' ? <RangeReport /> : <DayReport />}
+    </>
+  );
+}
+function DayReport() {
   const [days] = useLoad('/api/reports/days');
   const [id, setId] = useState(null);
   const [r, setR] = useState(null);
@@ -296,11 +310,13 @@ function StaffTab({ app }) {
   const [d, load] = useLoad('/api/admin/all');
   const [dlg, setDlg] = useState(null);
   const act = useAct();
-  if (app.user.role !== 'owner') return <p className="notice">{t('Only the owner can manage staff.')}</p>;
+  if (app.user.role !== 'owner') return <StaffProfiles />;
   if (!d) return <p className="muted">{t('Loading')}</p>;
   const roles = ['waiter', 'bartender', 'manager', 'owner'];
   return (
     <>
+      <StaffProfiles />
+      <h2>{t('Accounts and PINs')}</h2>
       <table className="grid"><thead><tr><th>{t('Name')}</th><th>{t('Role')}</th><th>{t('Language')}</th><th>{t('Active')}</th><th /></tr></thead>
         <tbody>{d.users.map((u) => (
           <tr key={u.id} className={u.active ? '' : 'dim'}><td><b>{u.name}</b></td><td>{t(u.role)}</td><td>{u.language === 'sq' ? 'Shqip' : 'English'}</td><td>{u.active ? '✓' : '–'}</td>
@@ -362,11 +378,14 @@ function SettingsTab({ app }) {
     <div className="narrow">
       <h2>{t('Printer connection')}</h2>
       <Field label={t('Printer')}><select className="input" value={f.printer_mode} onChange={set('printer_mode')}>
-        <option value="off">{t('No printer')}</option><option value="network">{t('Network printer')}</option><option value="windows">{t('USB printer shared in Windows')}</option><option value="file">{t('Save to files (testing)')}</option></select></Field>
+        <option value="off">{t('No printer')}</option><option value="winraw">{t('Printer installed on this PC')}</option><option value="network">{t('Network printer')}</option><option value="windows">{t('USB printer shared in Windows')}</option><option value="file">{t('Save to files (testing)')}</option></select></Field>
+      {f.printer_mode === 'winraw' && <Field label={t('Printer name')}><input className="input" value={f.printer_name || ''} onChange={set('printer_name')} /></Field>}
       {f.printer_mode === 'network' && <div className="row"><Field label={t('Printer address')}><input className="input" value={f.printer_host} onChange={set('printer_host')} placeholder="192.168.1.60" /></Field><Field label={t('Port')}><input className="input" value={f.printer_port} onChange={set('printer_port')} /></Field></div>}
       {f.printer_mode === 'windows' && <Field label={t('Windows share name')}><input className="input" value={f.printer_share} onChange={set('printer_share')} placeholder="POS80" /></Field>}
-      <div className="row"><button className="btn primary" onClick={() => save(['printer_mode', 'printer_host', 'printer_port', 'printer_share'])}>{t('Save')}</button>
+      <Field label={t('Paper width')}><select className="input" value={f.ticket_width || '32'} onChange={set('ticket_width')}><option value="32">58 mm (32)</option><option value="42">80 mm (42)</option><option value="48">80 mm (48)</option></select></Field>
+      <div className="row"><button className="btn primary" onClick={() => save(['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width'])}>{t('Save')}</button>
         <button className="btn" onClick={() => act(() => post('/api/system/test-print'), t('Ticket sent to the printer'))}>{t('Test print')}</button></div>
+      <PrinterFinder current={f} onPick={async (patch) => { const next = { ...f, ...patch }; setF(next); if (await act(() => put('/api/admin/settings', { printer_mode: next.printer_mode, printer_host: next.printer_host || '', printer_port: next.printer_port || '9100', printer_name: next.printer_name || '' }), t('Saved'))) { load(); app.reloadInfo(); } }} />
       <h2>{t('Fiscal')}</h2>
       <p className="notice">{t('Off. No fiscal driver is installed yet.')}</p>
       {owner && (
@@ -375,8 +394,11 @@ function SettingsTab({ app }) {
           <Field label={t('Cafe name')}><input className="input" value={f.cafe_name} onChange={set('cafe_name')} /></Field>
           <Field label={t('Free cancel window, seconds')}><input className="input" inputMode="numeric" value={f.cancel_window_sec} onChange={set('cancel_window_sec')} /></Field>
           <Field label={t('Lock the PC after idle, seconds')}><input className="input" inputMode="numeric" value={f.idle_lock_sec} onChange={set('idle_lock_sec')} /></Field>
+          <Field label={t('Mark a ticket late after, seconds')}><input className="input" inputMode="numeric" value={f.late_after_sec ?? '60'} onChange={set('late_after_sec')} /></Field>
+          <Field label={t('Log a device out after days unused')}><input className="input" inputMode="numeric" value={f.login_idle_days ?? '14'} onChange={set('login_idle_days')} /></Field>
+          <Field label={t('Backups to keep')}><input className="input" inputMode="numeric" value={f.backups_keep ?? '30'} onChange={set('backups_keep')} /></Field>
           <Field label={t('Second backup folder (USB stick)')}><input className="input" value={f.backup_dir} onChange={set('backup_dir')} placeholder="E:\\pos-backup" /></Field>
-          <button className="btn primary" onClick={() => save(['cafe_name', 'cancel_window_sec', 'idle_lock_sec', 'backup_dir'])}>{t('Save')}</button>
+          <button className="btn primary" onClick={() => save(['cafe_name', 'cancel_window_sec', 'idle_lock_sec', 'late_after_sec', 'login_idle_days', 'backups_keep', 'backup_dir'])}>{t('Save')}</button>
         </>
       )}
     </div>
@@ -406,7 +428,7 @@ function SystemTab({ app }) {
         <div><dt>{t('Version')}</dt><dd>{i.version}</dd></div>
         <div><dt>{t('Data folder')}</dt><dd>{i.data_dir}</dd></div>
       </dl>
-      <div className="row"><button className="btn" onClick={async () => { if (await act(() => post('/api/system/backup'), t('Backup saved'))) load(); }}>{t('Back up now')}</button></div>
+      <Backups owner={app.user.role === 'owner'} />
       {app.user.role === 'owner' && (
         <section className="danger-zone">
           <h2>{t('Log out every other device')}</h2>

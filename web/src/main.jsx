@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { get, post, put, ApiError, NetworkError, money } from './api.js';
+import { get, post, put, ApiError, NetworkError, money, useEvents } from './api.js';
 import { t, setLang, getLang } from './i18n.js';
-import { UiProvider, PinPad, useUi } from './ui.jsx';
+import { UiProvider, PinPad, useUi, ErrorBoundary } from './ui.jsx';
 import { Floor } from './Floor.jsx';
 import { Manager } from './Manager.jsx';
 import { errText, isPc } from './util.js';
@@ -97,6 +97,46 @@ function MySession({ user }) {
   );
 }
 
+// For the owner and the manager only: the money so far today, always on screen, and who is holding it.
+function CashStrip({ onDay }) {
+  const [c, setC] = useState(null);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(() => get('/api/cash/live').then(setC).catch(() => {}), []);
+  useEffect(() => { load(); const i = setInterval(load, 20000); return () => clearInterval(i); }, [load]);
+  useEvents({ tables: load, day: load, hello: load });
+  if (!c || !c.day) return null;
+  return (
+    <div className="cashstrip noprint">
+      <button className="cash-row" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span><small>{t('Sales today')}</small><b>{money(c.sales_cents)}</b></span>
+        <span><small>{t('Cash')}</small><b>{money(c.cash_cents)}</b></span>
+        <span><small>{t('With staff')}</small><b>{money(c.with_staff_cents)}</b></span>
+        <span><small>{t('Open tables')}</small><b>{c.open_tables} · {money(c.open_due_cents)}</b></span>
+        <i>{open ? '▴' : '▾'}</i>
+      </button>
+      {open && (
+        <div className="cash-open">
+          <table className="grid">
+            <thead><tr><th>{t('Staff')}</th><th className="r">{t('Cash sales')}</th><th className="r">{t('On the house')}</th><th className="r">{t('Owes')}</th><th className="r">{t('Handed over')}</th><th className="r">{t('Difference')}</th><th className="r">{t('Open tables')}</th></tr></thead>
+            <tbody>
+              {c.sessions.map((s) => (
+                <tr key={s.id} className={s.settled ? 'done' : ''}><td><b>{s.user_name}</b> <small>{t(s.role)}</small></td>
+                  <td className="r">{money(s.cash_cents)}</td><td className="r">{money(s.house_cents)}</td><td className="r"><b>{money(s.owed_cents)}</b></td>
+                  <td className="r">{s.settled ? money(s.handed_cents) : ''}</td><td className={'r' + (s.difference_cents < 0 ? ' neg' : '')}>{s.settled ? money(s.difference_cents) : ''}</td><td className="r">{s.open_tables || ''}</td></tr>
+              ))}
+              {!c.sessions.length && <tr><td colSpan="7" className="muted">–</td></tr>}
+            </tbody>
+          </table>
+          <div className="row between wrap">
+            <span className="muted">{t('Paid out')}: {money(c.payout_cents)} · {t('On the house')}: {money(c.house_cents)} · {t('Handed over')}: {money(c.handed_cents)}</span>
+            <button className="btn" onClick={() => { setOpen(false); onDay(); }}>{t('Settle')} ›</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Shell({ user, setUser, cafe }) {
   const boss = user.role === 'manager' || user.role === 'owner';
   const [view, setView] = useState('floor');
@@ -129,22 +169,24 @@ function Shell({ user, setUser, cafe }) {
       <header className="bar">
         <strong className="brand">{cafe}</strong>
         <nav>
-          <button className={view === 'floor' ? 'on' : ''} onClick={() => setView('floor')}>{t('Tables')}</button>
-          <button className={view === 'me' ? 'on' : ''} onClick={() => setView('me')}>{t('My session')}</button>
+          {boss && <button className={view === 'floor' ? 'on' : ''} onClick={() => setView('floor')}>{t('Tables')}</button>}
+          {boss && <button className={view === 'me' ? 'on' : ''} onClick={() => setView('me')}>{t('My session')}</button>}
           {boss && <button className={view === 'manager' ? 'on' : ''} onClick={() => setView('manager')}>{t('Manager')}</button>}
         </nav>
         <div className="bar-end">
+          {window.pos?.minimize && <button className="chip" onClick={() => window.pos.minimize()} title={t('Minimise')} aria-label={t('Minimise')}>▁</button>}
           <button className="chip" onClick={switchLang}>{getLang() === 'sq' ? 'EN' : 'SQ'}</button>
           <button className="chip who" onClick={logout} title={t('Log out')}><b>{user.name}</b><span>{isPc() ? t('Lock') : t('Log out')}</span></button>
         </div>
       </header>
+      {boss && <CashStrip onDay={() => setView('manager')} />}
       {info?.clock_wrong && <div className="banner bad">{t('The PC clock is wrong. Fix it before taking orders.')}</div>}
       {info && !info.day_open && <div className="banner">{t('No business day is open. A manager has to open the day.')}</div>}
       {info?.catch_up && <div className="banner warn">{t('Catch up mode is on: orders are recorded without printing.')}</div>}
       {info && !info.printer.ok && info.printer.mode !== 'off' && <div className="banner bad">{t('Printer')}: {info.printer.error}</div>}
       <main className="main">
         {view === 'floor' && <Floor app={app} />}
-        {view === 'me' && <MySession user={user} />}
+        {view === 'me' && boss && <MySession user={user} />}
         {view === 'manager' && boss && <Manager app={app} />}
       </main>
     </div>
@@ -162,6 +204,8 @@ function App() {
     } catch { setState({ loading: false, offline: true }); setTimeout(boot, 2500); }
   }, []);
   useEffect(() => { boot(); }, [boot]);
+  // A login that ran out, or was ended from the owner's screen, lands back on the name list.
+  useEffect(() => { const out = () => setState((s) => (s.user ? { ...s, user: null } : s)); window.addEventListener('pos-logged-out', out); return () => window.removeEventListener('pos-logged-out', out); }, []);
   const setUser = (user) => { if (user) setLang(user.language); setState((s) => ({ ...s, user, setup: false })); if (!user) boot(); };
   if (state.loading) return <div className="gate"><p className="muted">{t('Loading')}</p></div>;
   if (state.offline) return <div className="gate"><div className="gate-card"><h1>{t('No connection to the POS. Check the Wi-Fi.')}</h1></div></div>;
@@ -170,4 +214,4 @@ function App() {
   return <Shell key={state.user.id + getLang()} user={state.user} setUser={setUser} cafe={state.cafe} />;
 }
 
-createRoot(document.getElementById('root')).render(<UiProvider><App /></UiProvider>);
+createRoot(document.getElementById('root')).render(<ErrorBoundary><UiProvider><App /></UiProvider></ErrorBoundary>);

@@ -187,3 +187,47 @@ p { margin: .4rem 0; }
 .sent-sum span { color: var(--bottle); font-weight: 600; white-space: nowrap; }
 /* Pay dialog: the total and the buttons never scroll out of reach. */
 .payfoot { position: sticky; bottom: 0; margin: 0 -18px -18px; padding: 2px 18px calc(14px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 2px solid var(--ink); }
+
+/* ---- owner and manager: the money so far today, always on screen ---- */
+.cashstrip { background: var(--bottle-deep); color: #fff; }
+.cash-row { width: 100%; display: flex; align-items: center; gap: 18px; padding: 6px 14px; border: 0; background: transparent; color: #fff; text-align: left; overflow-x: auto; }
+.cash-row span { display: grid; line-height: 1.15; white-space: nowrap; } .cash-row small { font-size: .7rem; color: #a9c7b9; } .cash-row b { font-size: 1.02rem; }
+.cash-row i { margin-left: auto; font-style: normal; color: #a9c7b9; }
+.cash-open { background: var(--surface); color: var(--ink); padding: 10px 14px 12px; border-bottom: 2px solid var(--ink); max-height: 60vh; overflow: auto; }
+td.neg { color: var(--brick); font-weight: 600; } b.neg { color: var(--brick); }
+
+/* ---- reports: period picker and mode switch ---- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+.seg button { min-height: 40px; padding: 0 14px; border: 0; background: var(--surface); font-weight: 600; } .seg button.on { background: var(--ink); color: #fff; }
+.period { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.scroll-x { overflow-x: auto; }
+
+/* ---- printers on this PC ---- */
+.printers { margin: 14px 0; } .printers h3 { margin: 0; font-size: 1rem; }
+.printer-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.printer-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.printer-list li.on { border-color: var(--bottle); background: var(--mint); }
+.printer-list small { display: block; color: var(--muted); font-size: .8rem; }
+.backups { margin-top: 18px; }
+
+/* ---- the drawn floor plan ---- */
+.view-toggle { margin-left: auto; display: inline-flex; gap: 4px; }
+.zones .view-toggle button { min-height: 44px; min-width: 44px; padding: 0; justify-content: center; border-radius: 10px; font-size: 1.1rem; }
+.split.with-plan { grid-template-columns: minmax(420px, 58%) 1fr; }
+.plan { display: flex; flex-direction: column; min-height: 0; }
+.plan-tools { display: grid; gap: 8px; margin-bottom: 10px; } .plan-picked { padding: 6px 8px; background: var(--mint); border-radius: 10px; align-items: center; }
+.plan-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #f6f8f7; height: min(70vh, 720px); -webkit-overflow-scrolling: touch; }
+.plan-canvas { position: relative; background-image: radial-gradient(#d5ddd9 1px, transparent 1px); background-size: 20px 20px; }
+.plan-table { position: absolute; aspect-ratio: auto; background: var(--surface); touch-action: pan-x pan-y; }
+.plan-table.round { border-radius: 50%; }
+.plan-table b { font-size: 1.5rem; }
+.plan-item { position: absolute; display: grid; place-items: center; font-size: .82rem; font-weight: 700; color: #fff; overflow: hidden; user-select: none; }
+.plan-item.bar { background: #6b4a2f; border-radius: 8px; letter-spacing: .04em; }
+.plan-item.chair { background: #b9c5bf; border-radius: 50%; }
+.plan-item.wall { background: #2a2f2c; border-radius: 3px; }
+.plan-item.door { background: repeating-linear-gradient(90deg, #8a9690 0 8px, transparent 8px 14px); }
+.plan-item.plant { background: #4c9a63; border-radius: 50%; }
+.plan-item.label { background: transparent; color: var(--muted); font-weight: 600; font-size: .95rem; }
+.plan.editing .plan-table, .plan.editing .plan-item { cursor: grab; touch-action: none; }
+.plan.editing .picked { outline: 3px solid var(--amber); outline-offset: 2px; }
+.plan.editing .plan-item.label { outline: 1px dashed #b9c5bf; }

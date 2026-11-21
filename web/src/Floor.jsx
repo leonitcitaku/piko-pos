@@ -3,6 +3,7 @@ import { get, post, uid, money, clock, toCents, NetworkError, useEvents } from '
 import { t } from './i18n.js';
 import { Modal, Stepper, useUi } from './ui.jsx';
 import { errText, sleep, withApproval } from './util.js';
+import { PlanView } from './Plan.jsx';
 
 function useWide() {
   const q = '(min-width: 900px)';
@@ -19,6 +20,9 @@ export function Floor({ app }) {
   const [zone, setZone] = useState(null);
   const [sel, setSel] = useState(null);
   const [err, setErr] = useState('');
+  // Two ways to see the room: the plain grid, or the plan the owner drew. Each device remembers its own choice.
+  const [mode, setMode] = useState(() => { try { return localStorage.getItem('floor_view') || 'grid'; } catch { return 'grid'; } });
+  const pickMode = (m) => { setMode(m); try { localStorage.setItem('floor_view', m); } catch { /* private window */ } };
   const loadTables = useCallback(() => get('/api/tables').then((d) => { setData(d); setErr(''); }).catch((e) => setErr(errText(e))), []);
   const loadMenu = useCallback(() => get('/api/menu').then(setMenu).catch(() => {}), []);
   useEffect(() => { loadTables(); loadMenu(); }, [loadTables, loadMenu]);
@@ -40,7 +44,12 @@ export function Floor({ app }) {
           const open = data.tables.filter((x) => x.zone_id === z.id && x.order_id).length;
           return <button key={z.id} role="tab" aria-selected={zone === z.id} className={zone === z.id ? 'on' : ''} onClick={() => setZone(z.id)}>{z.name}{open > 0 && <i>{open}</i>}</button>;
         })}
+        <span className="view-toggle">
+          <button className={mode === 'grid' ? 'on' : ''} onClick={() => pickMode('grid')} title={t('Grid')} aria-label={t('Grid')}>▦</button>
+          <button className={mode === 'plan' ? 'on' : ''} onClick={() => pickMode('plan')} title={t('Plan')} aria-label={t('Plan')}>◰</button>
+        </span>
       </div>
+      {mode === 'plan' && zone != null ? <PlanView app={app} data={data} zone={zone} sel={sel} onSelect={setSel} reload={loadTables} /> : (
       <div className="tiles">
         {data.tables.filter((x) => x.zone_id === zone).map((x) => {
           const state = !x.order_id ? 'free' : x.waiter_id === app.user.id ? 'mine' : 'theirs';
@@ -52,12 +61,13 @@ export function Floor({ app }) {
           );
         })}
       </div>
+      )}
     </section>
   );
   const pane = table && (
     <OrderPane key={table.id} app={app} table={table} menu={menu} tables={data} onClose={() => setSel(null)} onGo={(id) => { setSel(id); loadTables(); }} reload={() => { loadTables(); loadMenu(); }} />
   );
-  if (wide) return <div className="split">{grid}<section className="pane">{pane || <div className="empty"><p>{t('Pick a table')}</p></div>}</section></div>;
+  if (wide) return <div className={'split' + (mode === 'plan' ? ' with-plan' : '')}>{grid}<section className="pane">{pane || <div className="empty"><p>{t('Pick a table')}</p></div>}</section></div>;
   return table ? <section className="pane full">{pane}</section> : grid;
 }
 
