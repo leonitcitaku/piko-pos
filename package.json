@@ -1,0 +1,33 @@
+{
+  "name": "piko-pos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local cafe POS: one PC runs everything, phones are optional",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/src/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning server/src/index.js --dev",
+    "test": "node --disable-warning=ExperimentalWarning --test server/test/pos.test.js",
+    "build:web": "node scripts/build.mjs",
+    "desktop": "electron desktop/main.cjs",
+    "fetch-node": "node scripts/fetch-node.mjs",
+    "dist": "node scripts/build.mjs && node scripts/fetch-node.mjs && electron-builder --win nsis"
+  },
+  "main": "desktop/main.cjs",
+  "engines": { "node": ">=22.16" },
+  "devDependencies": { "react": "^19.2.0", "react-dom": "^19.2.0", "esbuild": "^0.25.0" },
+  "build": {
+    "appId": "com.pikoagency.cafepos",
+    "productName": "Cafe POS",
+    "directories": { "output": "release" },
+    "files": ["desktop/**/*", "package.json"],
+    "extraResources": [
+      { "from": "server", "to": "app/server", "filter": ["src/**/*"] },
+      { "from": "web/dist", "to": "app/web/dist" },
+      { "from": "package.json", "to": "app/package.json" },
+      { "from": "vendor/node", "to": "node" }
+    ],
+    "win": { "target": "nsis", "icon": "desktop/icon.ico" },
+    "nsis": { "oneClick": false, "perMachine": true, "allowToChangeInstallationDirectory": false, "include": "desktop/installer.nsh", "runAfterFinish": true, "createDesktopShortcut": true }
+  }
+}
