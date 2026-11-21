@@ -76,3 +76,104 @@ export function dayReportCsv(dayId) {
   add(); add('Payouts', 'Amount', 'Reason', 'From', 'Approved by'); for (const p of r.payouts) add(dt(p.created_at), eur(p.amount_cents), p.reason, p.user_name || 'house', p.approved_by_name || '');
   return '﻿' + rows.join('\r\n') + '\r\n';
 }
+
+// ---------------------------------------------------------------- any period: a day, a month, a year, chosen dates
+const FOREVER = 9e15;
+// from and to are calendar dates 'YYYY-MM-DD', both included, in the PC's own time zone. Missing means open ended.
+export function parseRange(q = {}) {
+  const at = (s, plus = 0) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? new Date(+m[1], +m[2] - 1, +m[3] + plus).getTime() : null; };
+  const from = at(q.from) ?? 0, to = at(q.to, 1) ?? FOREVER;
+  if (to <= from) throw new HttpError(400, 'bad_range', 'The end date is before the start date');
+  return { from, to };
+}
+const LOCAL = (col, fmt) => `strftime('${fmt}', ${col} / 1000, 'unixepoch', 'localtime')`;
+const LINE = 'ROUND(i.price_cents * i.qty * (100 - i.discount_pct) / 100.0)';
+
+export function rangeReport(from, to) {
+  const tot = get(`SELECT COALESCE(SUM(CASE WHEN type = 'cash' THEN amount_cents ELSE 0 END), 0) AS cash,
+      COALESCE(SUM(CASE WHEN type = 'house' THEN amount_cents ELSE 0 END), 0) AS house, COUNT(*) AS payments, COUNT(DISTINCT order_id) AS orders
+    FROM payments WHERE created_at >= ? AND created_at < ?`, from, to);
+  const bucket = (fmt) => all(`SELECT ${LOCAL('p.created_at', fmt)} AS key,
+      SUM(CASE WHEN p.type = 'cash' THEN p.amount_cents ELSE 0 END) AS cash, SUM(CASE WHEN p.type = 'house' THEN p.amount_cents ELSE 0 END) AS house,
+      SUM(p.amount_cents) AS cents, COUNT(DISTINCT p.order_id) AS qty
+    FROM payments p WHERE p.created_at >= ? AND p.created_at < ? GROUP BY key ORDER BY key`, from, to);
+  const byDay = bucket('%Y-%m-%d');
+  const items = (key) => all(`SELECT ${key} AS key, SUM(i.qty) AS qty, CAST(SUM(${LINE}) AS INTEGER) AS cents
+    FROM order_items i JOIN payments p ON p.id = i.payment_id LEFT JOIN products pr ON pr.id = i.product_id LEFT JOIN categories c ON c.id = pr.category_id
+    WHERE i.status = 'sent' AND p.created_at >= ? AND p.created_at < ? GROUP BY key`, from, to);
+  const payouts = all(`SELECT c.id, c.created_at, c.amount_cents, c.reason, u.name AS user_name, a.name AS approved_by_name FROM cash_movements c
+    LEFT JOIN sessions s ON s.id = c.session_id LEFT JOIN users u ON u.id = s.user_id LEFT JOIN users a ON a.id = c.approved_by
+    WHERE c.type = 'payout' AND c.created_at >= ? AND c.created_at < ? ORDER BY c.id DESC LIMIT 500`, from, to);
+  const payoutTotal = get("SELECT COALESCE(SUM(amount_cents), 0) AS n FROM cash_movements WHERE type = 'payout' AND created_at >= ? AND created_at < ?", from, to).n;
+  const diff = get(`SELECT COALESCE(SUM(CASE WHEN difference_cents > 0 THEN difference_cents ELSE 0 END), 0) AS surplus,
+      COALESCE(SUM(CASE WHEN difference_cents < 0 THEN difference_cents ELSE 0 END), 0) AS shortage, COUNT(*) AS settled
+    FROM sessions WHERE settled_at >= ? AND settled_at < ?`, from, to);
+  const acts = Object.fromEntries(all(`SELECT action, COUNT(*) AS n FROM audit_log WHERE at >= ? AND at < ?
+    AND action IN ('void', 'quick_cancel', 'discount', 'on_the_house') GROUP BY action`, from, to).map((r) => [r.action, r.n]));
+  return {
+    from, to: to >= FOREVER ? null : to,
+    totals: { sales_cents: tot.cash + tot.house, cash_cents: tot.cash, house_cents: tot.house, payout_cents: payoutTotal, kept_cents: tot.cash - payoutTotal,
+      tables_paid: get("SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND closed_at >= ? AND closed_at < ?", from, to).n,
+      payments: tot.payments, days_with_sales: byDay.length, surplus_cents: diff.surplus, shortage_cents: diff.shortage,
+      voids: acts.void || 0, quick_cancels: acts.quick_cancel || 0, discounts: acts.discount || 0, comps: acts.on_the_house || 0 },
+    by_day: byDay, by_month: byDay.length > 62 ? bucket('%Y-%m') : [], by_hour: bucket('%H').map((r) => ({ ...r, key: Number(r.key) })),
+    by_category: items("COALESCE(c.name, '?')").sort((a, b) => b.cents - a.cents), by_item: items('i.name').sort((a, b) => b.qty - a.qty).slice(0, 200),
+    by_staff: all(`SELECT u.name AS key, SUM(CASE WHEN p.type = 'cash' THEN p.amount_cents ELSE 0 END) AS cash, SUM(p.amount_cents) AS cents, COUNT(DISTINCT p.order_id) AS qty
+      FROM payments p JOIN users u ON u.id = p.user_id WHERE p.created_at >= ? AND p.created_at < ? GROUP BY u.id ORDER BY cents DESC`, from, to),
+    payouts,
+  };
+}
+
+export function rangeReportCsv(from, to) {
+  const r = rangeReport(from, to), rows = [];
+  const add = (...cells) => rows.push(cells.map(csvCell).join(','));
+  const d = (ms) => (ms ? new Date(ms).toLocaleDateString('sv-SE') : '');
+  add('From', from ? d(from) : 'start'); add('To', r.to ? d(r.to - 1) : 'now'); add();
+  add('Total sales', eur(r.totals.sales_cents)); add('Cash', eur(r.totals.cash_cents)); add('On the house', eur(r.totals.house_cents));
+  add('Payouts', eur(r.totals.payout_cents)); add('Cash kept', eur(r.totals.kept_cents)); add('Tables paid', r.totals.tables_paid);
+  add('Surplus at settling', eur(r.totals.surplus_cents)); add('Shortage at settling', eur(r.totals.shortage_cents)); add();
+  add('Day', 'Tables', 'Cash', 'On the house', 'Total'); for (const x of r.by_day) add(x.key, x.qty, eur(x.cash), eur(x.house), eur(x.cents));
+  add(); add('Staff', 'Tables', 'Cash', 'Total'); for (const x of r.by_staff) add(x.key, x.qty, eur(x.cash), eur(x.cents));
+  add(); add('Category', 'Qty', 'Amount'); for (const x of r.by_category) add(x.key, x.qty, eur(x.cents));
+  add(); add('Item', 'Qty', 'Amount'); for (const x of r.by_item) add(x.key, x.qty, eur(x.cents));
+  add(); add('Payout', 'Amount', 'Reason', 'From', 'Approved by'); for (const p of r.payouts) add(new Date(p.created_at).toLocaleString('sv-SE'), eur(p.amount_cents), p.reason, p.user_name || 'house', p.approved_by_name || '');
+  return '﻿' + rows.join('\r\n') + '\r\n';
+}
+
+// ---------------------------------------------------------------- staff: what each person did in a period
+export function staffReport(from, to) {
+  const by = (rows, key = 'user_id') => new Map(rows.map((r) => [r[key], r]));
+  const pay = by(all(`SELECT user_id, SUM(CASE WHEN type = 'cash' THEN amount_cents ELSE 0 END) AS cash, SUM(CASE WHEN type = 'house' THEN amount_cents ELSE 0 END) AS house,
+    COUNT(*) AS payments, COUNT(DISTINCT order_id) AS tables FROM payments WHERE created_at >= ? AND created_at < ? GROUP BY user_id`, from, to));
+  const sent = by(all("SELECT sent_by AS user_id, SUM(qty) AS items FROM order_items WHERE status = 'sent' AND sent_at >= ? AND sent_at < ? GROUP BY sent_by", from, to));
+  const ses = by(all(`SELECT user_id, COUNT(*) AS sessions, SUM(CASE WHEN settled_at IS NOT NULL THEN 1 ELSE 0 END) AS settled,
+    COALESCE(SUM(difference_cents), 0) AS difference, COALESCE(SUM(CASE WHEN difference_cents > 0 THEN difference_cents ELSE 0 END), 0) AS surplus,
+    COALESCE(SUM(CASE WHEN difference_cents < 0 THEN difference_cents ELSE 0 END), 0) AS shortage, MAX(started_at) AS last_at
+    FROM sessions WHERE started_at >= ? AND started_at < ? GROUP BY user_id`, from, to));
+  const acts = new Map();
+  for (const r of all(`SELECT user_id, action, COUNT(*) AS n FROM audit_log WHERE at >= ? AND at < ? AND action IN ('void', 'quick_cancel', 'discount') GROUP BY user_id, action`, from, to)) {
+    const a = acts.get(r.user_id) || {}; a[r.action] = r.n; acts.set(r.user_id, a);
+  }
+  return all('SELECT id, name, role, active FROM users ORDER BY active DESC, name').map((u) => {
+    const p = pay.get(u.id) || {}, s = ses.get(u.id) || {}, a = acts.get(u.id) || {};
+    return { id: u.id, name: u.name, role: u.role, active: u.active,
+      sales_cents: (p.cash || 0) + (p.house || 0), cash_cents: p.cash || 0, house_cents: p.house || 0, tables: p.tables || 0, items: sent.get(u.id)?.items || 0,
+      sessions: s.sessions || 0, settled: s.settled || 0, surplus_cents: s.surplus || 0, shortage_cents: s.shortage || 0, difference_cents: s.difference || 0,
+      voids: a.void || 0, quick_cancels: a.quick_cancel || 0, discounts: a.discount || 0, last_at: s.last_at || null };
+  });
+}
+
+export function staffDetail(userId, from, to) {
+  const row = staffReport(from, to).find((u) => u.id === userId);
+  if (!row) throw new HttpError(404, 'no_user');
+  const sessions = all(`SELECT s.id, s.started_at, s.settled_at, s.float_cents, s.expected_cents, s.handed_cents, s.difference_cents, c.name AS confirmed_by_name,
+      (SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE session_id = s.id AND type = 'cash') AS cash_cents,
+      (SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE session_id = s.id AND type = 'house') AS house_cents,
+      (SELECT COALESCE(SUM(amount_cents), 0) FROM cash_movements WHERE session_id = s.id AND type = 'payout') AS payout_cents
+    FROM sessions s LEFT JOIN users c ON c.id = s.confirmed_by WHERE s.user_id = ? AND s.started_at >= ? AND s.started_at < ? ORDER BY s.id DESC LIMIT 400`, userId, from, to);
+  const byDay = all(`SELECT ${LOCAL('p.created_at', '%Y-%m-%d')} AS key, SUM(p.amount_cents) AS cents, COUNT(DISTINCT p.order_id) AS qty
+    FROM payments p WHERE p.user_id = ? AND p.created_at >= ? AND p.created_at < ? GROUP BY key ORDER BY key DESC LIMIT 400`, userId, from, to);
+  const topItems = all(`SELECT i.name AS key, SUM(i.qty) AS qty, CAST(SUM(${LINE}) AS INTEGER) AS cents FROM order_items i
+    WHERE i.sent_by = ? AND i.status = 'sent' AND i.sent_at >= ? AND i.sent_at < ? GROUP BY i.name ORDER BY qty DESC LIMIT 15`, userId, from, to);
+  return { ...row, session_list: sessions, by_day: byDay, top_items: topItems };
+}

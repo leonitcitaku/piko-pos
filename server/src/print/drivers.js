@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getSetting, dataDir } from '../db.js';
 import { ticketBytes, ticketText } from './escpos.js';
+import { sendWindowsRaw } from '../util/printers.js';
+import { ticketWidth } from './queue.js';
 
 // Network printer: raw ESC/POS to port 9100. Asks the printer for its paper status first when it answers.
 // Most cheap printers never answer the status question, so after one silent try we stop waiting for it.
@@ -41,14 +43,14 @@ async function sendWindowsShare(share, bytes) {
 async function sendFile(job) {
   const dir = path.join(dataDir, 'tickets');
   await fs.promises.mkdir(dir, { recursive: true });
-  await fs.promises.writeFile(path.join(dir, `${String(job.id).padStart(6, '0')}-${job.kind}.txt`), ticketText(job));
+  await fs.promises.writeFile(path.join(dir, `${String(job.id).padStart(6, '0')}-${job.kind}.txt`), ticketText(job, ticketWidth()));
 }
 
 export async function printJob(job) {
   const mode = getSetting('printer_mode', 'off');
   if (mode === 'off') return;                               // no printer set up: tickets live on the Tickets page only
   if (mode === 'file') return sendFile(job);
-  const bytes = ticketBytes(job);
+  const bytes = ticketBytes(job, ticketWidth());
   if (mode === 'network') {
     const host = getSetting('printer_host', '');
     if (!host) throw new Error('Printer address is not set');
@@ -58,6 +60,11 @@ export async function printJob(job) {
     const share = getSetting('printer_share', '');
     if (!share) throw new Error('Printer share name is not set');
     return sendWindowsShare(share, bytes);
+  }
+  if (mode === 'winraw') {
+    const name = getSetting('printer_name', '');
+    if (!name) throw new Error('No printer is picked');
+    return sendWindowsRaw(name, bytes);
   }
   throw new Error('Unknown printer mode: ' + mode);
 }

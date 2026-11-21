@@ -80,6 +80,19 @@ const MIGRATIONS = [
   `,
   // 2: remember when a device last got a PIN wrong, so the lockout can grow and then be forgotten.
   `ALTER TABLE pin_attempts ADD COLUMN last_fail INTEGER NOT NULL DEFAULT 0;`,
+  // 3: a floor plan the owner draws. Where each table stands, plus the bar, chairs, walls and labels around them.
+  `
+  ALTER TABLE tables ADD COLUMN px INTEGER;
+  ALTER TABLE tables ADD COLUMN py INTEGER;
+  ALTER TABLE tables ADD COLUMN pw INTEGER;
+  ALTER TABLE tables ADD COLUMN ph INTEGER;
+  ALTER TABLE tables ADD COLUMN shape TEXT NOT NULL DEFAULT 'square';
+  CREATE TABLE plan_items (
+    id INTEGER PRIMARY KEY, zone_id INTEGER NOT NULL REFERENCES zones(id), kind TEXT NOT NULL,
+    x INTEGER NOT NULL, y INTEGER NOT NULL, w INTEGER NOT NULL, h INTEGER NOT NULL, label TEXT
+  );
+  CREATE INDEX plan_zone ON plan_items(zone_id);
+  `,
 ];
 
 export function openDb(dir) {

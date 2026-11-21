@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, closeDb } from './db.js';
-import { createRouter, HttpError, readBody, parseCookies, sendJson } from './http.js';
+import { createRouter, HttpError, readBody, readRaw, parseCookies, sendJson } from './http.js';
 import { userFromToken } from './auth.js';
 import { registerRoutes, lanUrls } from './routes.js';
 import { startQueue, stopQueue } from './print/queue.js';
@@ -40,7 +40,7 @@ export async function start(opts = {}) {
     const url = new URL(req.url, 'http://x');
     try {
       if (url.pathname.startsWith('/api/')) return await api(req, res, url);
-      return serveStatic(res, url.pathname);
+      return serveStatic(req, res, url.pathname);
     } catch (e) {
       if (res.headersSent) return res.end();
       if (e instanceof HttpError) return sendJson(res, e.status, { error: e.code, message: e.message, ...(e.extra || {}) });
@@ -58,7 +58,7 @@ export async function start(opts = {}) {
       if (!user) throw new HttpError(401, 'not_logged_in');
       if (m.opts.roles && !m.opts.roles.includes(user.role)) throw new HttpError(403, 'forbidden', 'Your role cannot do this');
     }
-    const body = req.method === 'GET' ? {} : await readBody(req);
+    const body = req.method === 'GET' ? {} : m.opts.raw ? await readRaw(req) : await readBody(req);
     const ctx = { req, res, params: m.params, query: Object.fromEntries(url.searchParams), body, user, token,
       device: (req.socket.remoteAddress || '?').replace('::ffff:', '') };
     const out = await m.handler(ctx);
@@ -71,14 +71,18 @@ export async function start(opts = {}) {
     sendJson(res, 200, out ?? { ok: true }, headers);
   }
 
-  function serveStatic(res, pathname) {
+  function serveStatic(req, res, pathname) {
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     let file = path.join(webDir, rel);
     if (file !== webDir && !file.startsWith(webDir + path.sep)) throw new HttpError(403, 'forbidden');
     if (!rel || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(webDir, 'index.html');
     if (!fs.existsSync(file)) { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('Cafe POS server is running. The web app is not built yet: run "npm run build:web".'); }
     const ext = path.extname(file);
-    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600' });
+    // Always ask, answer 304 when nothing changed. A phone must never run last hour's app after an update.
+    const st = fs.statSync(file);
+    const etag = `"${st.size}-${Math.round(st.mtimeMs)}"`;
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' }); return res.end(); }
+    res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag });
     fs.createReadStream(file).pipe(res);
   }
 

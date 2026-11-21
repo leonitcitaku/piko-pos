@@ -1,5 +1,5 @@
 // Builds bar tickets. Text first (for the Tickets page and the file printer), then ESC/POS bytes.
-const WIDTH = 32; // characters at normal size on 58 mm paper; 80 mm printers simply show wider margins
+const DEFAULT_WIDTH = 32; // characters at normal size on 58 mm paper. 80 mm paper fits 48.
 
 const TRANSLIT = { 'ë': 'e', 'Ë': 'E', 'ç': 'c', 'Ç': 'C' };
 export const plain = (s) => String(s ?? '').replace(/[ëËçÇ]/g, (c) => TRANSLIT[c]).replace(/[^\x20-\x7E]/g, '?');
@@ -8,7 +8,7 @@ const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padSt
 const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', copy: 'POROSI', test: 'TEST' };
 
 // 'big' lines print double width, so they only fit half as many characters as the rest.
-const budget = (style) => (style === 'big' ? WIDTH / 2 : WIDTH);
+const budget = (style, width) => (style === 'big' ? Math.floor(width / 2) : width);
 
 // Word aware wrapping. Keeps the leading spaces of the first line, puts `indent` in front of the
 // continuation lines so the bartender sees one item and not two, and hard splits a word that is too long.
@@ -34,12 +34,12 @@ export function wrapText(text, width, indent = '') {
 }
 
 // Returns a list of { text, style } lines. style: 'big' | 'bold' | 'center' | 'rule' | undefined
-export function ticketLines(job) {
+export function ticketLines(job, width = DEFAULT_WIDTH) {
   const c = job.content, out = [];
   const push = (text, style, indent = '') => {
     const t = plain(text);
     if (style === 'rule') { out.push({ text: t, style }); return; }
-    for (const line of wrapText(t, budget(style), indent)) out.push({ text: line, style });
+    for (const line of wrapText(t, budget(style, width), indent)) out.push({ text: line, style });
   };
   // A reprint keeps its original kind (so a cancel stays a cancel) and carries the copy flag in its content.
   // Rows written before that change still have kind 'copy', which renders as a copy of an order.
@@ -63,11 +63,11 @@ export function ticketLines(job) {
   return out;
 }
 
-export function ticketText(job) {
-  return ticketLines(job).map((l) => {
-    if (l.style === 'rule') return '-'.repeat(WIDTH);
+export function ticketText(job, width = DEFAULT_WIDTH) {
+  return ticketLines(job, width).map((l) => {
+    if (l.style === 'rule') return '-'.repeat(width);
     if (l.style === 'big' || l.style === 'center') {
-      const pad = Math.max(0, Math.floor((WIDTH - l.text.length) / 2));
+      const pad = Math.max(0, Math.floor((width - l.text.length) / 2));
       return ' '.repeat(pad) + l.text;
     }
     return l.text;
@@ -75,11 +75,11 @@ export function ticketText(job) {
 }
 
 const ESC = 0x1b, GS = 0x1d;
-export function ticketBytes(job) {
+export function ticketBytes(job, width = DEFAULT_WIDTH) {
   const parts = [Buffer.from([ESC, 0x40])]; // init
-  for (const l of ticketLines(job)) {
+  for (const l of ticketLines(job, width)) {
     // Reset bold too, or a rule after a bold note line inherits it and prints heavy.
-    if (l.style === 'rule') { parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0x00, ESC, 0x45, 0]), Buffer.from('-'.repeat(WIDTH) + '\n', 'ascii')); continue; }
+    if (l.style === 'rule') { parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0x00, ESC, 0x45, 0]), Buffer.from('-'.repeat(width) + '\n', 'ascii')); continue; }
     const align = l.style === 'big' || l.style === 'center' ? 1 : 0;
     const size = l.style === 'big' ? 0x11 : 0x00;          // double width and height
     const bold = l.style === 'big' || l.style === 'bold' ? 1 : 0;

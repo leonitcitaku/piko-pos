@@ -69,7 +69,7 @@ function closeIfDone(ctx, orderId) {
 }
 
 export function tablesView() {
-  const rows = all(`SELECT t.id, t.name, t.zone_id, o.id AS order_id, o.waiter_id, u.name AS waiter_name, o.opened_at
+  const rows = all(`SELECT t.id, t.name, t.zone_id, t.px, t.py, t.pw, t.ph, t.shape, o.id AS order_id, o.waiter_id, u.name AS waiter_name, o.opened_at
     FROM tables t LEFT JOIN orders o ON o.table_id = t.id AND o.status = 'open' LEFT JOIN users u ON u.id = o.waiter_id
     WHERE t.active = 1 ORDER BY t.zone_id, t.sort, t.id`);
   const dues = new Map();
@@ -80,6 +80,7 @@ export function tablesView() {
   }
   return {
     zones: all('SELECT id, name FROM zones WHERE active = 1 ORDER BY sort, id'),
+    plan: all('SELECT id, zone_id, kind, x, y, w, h, label FROM plan_items ORDER BY id'),
     tables: rows.map((r) => ({ ...r, due_cents: dues.get(r.order_id)?.due || 0, items: dues.get(r.order_id)?.count || 0,
       part_paid: (dues.get(r.order_id)?.paid || 0) > 0 })),
   };

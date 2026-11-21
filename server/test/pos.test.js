@@ -17,6 +17,8 @@ const product = (name) => menu.products.find((p) => p.name === name);
 const table = (name) => tables.tables.find((t) => t.name === name);
 const tickets = async () => ok(await manager.get('/api/tickets')).tickets;
 const setClock = (ms) => owner.post('/api/test/clock', { offset_ms: ms });
+// Staff cannot see cash figures any more, so the tests read a person's open session the way a manager would.
+const sessionOf = async (key) => ({ session: ok(await manager.get('/api/day')).sessions.find((x) => x.user_id === ids[key] && !x.settled_at) || null });
 const idle = async () => { await until(async () => (await tickets()).every((x) => x.status !== 'waiting')); await sleep(200); };
 
 async function order(c, tableName, lines) {
@@ -191,7 +193,7 @@ test('cafe POS', async (t) => {
     assert.equal((await w3.post(`/api/orders/${o.id}/pay`, { payment_id: uid(), type: 'house' })).status, 403);
     const p = ok(await w3.post(`/api/orders/${o.id}/pay`, { payment_id: uid(), type: 'house', pin: PIN.owner }));
     assert.equal(p.order.status, 'paid');
-    const s = ok(await w3.get('/api/me/session')).session;
+    const s = (await sessionOf('w3')).session;
     assert.equal(s.house_cents, 600); assert.equal(s.cash_cents, 0); assert.equal(s.owed_cents, 0);
   });
 
@@ -216,10 +218,10 @@ test('cafe POS', async (t) => {
     ok(await manager.post('/api/sessions/float', { user_id: ids.w1, amount_cents: 2000 }));
     // w1 collects cash on tables 1, 12 and 17
     for (const oid of [ids.order1, ids.o12, ids.o17]) ok(await w1.post(`/api/orders/${oid}/pay`, { payment_id: uid() }));
-    let s = ok(await w1.get('/api/me/session')).session;
+    let s = (await sessionOf('w1')).session;
     assert.equal(s.cash_cents, 240 + 200 + 300); assert.equal(s.owed_cents, 2000 + 740);
     ok(await manager.post('/api/cash/payout', { amount_cents: 500, reason: 'Qumesht', session_id: s.id }));
-    s = ok(await w1.get('/api/me/session')).session;
+    s = (await sessionOf('w1')).session;
     assert.equal(s.owed_cents, 2000 + 740 - 500);
     // w1 still has open tables (2, 3, 9): settlement is refused until they are passed on
     let r = await manager.post(`/api/sessions/${s.id}/settle`, { handed_cents: 2240 });
@@ -229,7 +231,7 @@ test('cafe POS', async (t) => {
     const live = await order(w3, 'T3', [['Kola', 1]]);
     const done = ok(await manager.post(`/api/sessions/${s.id}/settle`, { handed_cents: 2200 }));
     assert.equal(done.expected_cents, 2240); assert.equal(done.difference_cents, -40);
-    assert.equal(ok(await w1.get('/api/me/session')).session, null, 'the settled session is finished; a new one starts only if they sell again');
+    assert.equal((await sessionOf('w1')).session, null, 'the settled session is finished; a new one starts only if they sell again');
     ok(await w3.post(`/api/orders/${live.id}/pay`, { payment_id: uid() }));
   });
 
@@ -388,6 +390,73 @@ test('cafe POS', async (t) => {
     assert.equal((await phone.get('/api/tables')).status, 401, 'an idle token must stop working');
     await jump(0);
     ok(await phone.post('/api/auth/login', { user_id: ids.w3, pin: PIN.w3 }), 'and logging in again works');
+  });
+
+  await t.test('waiters see the tables and nothing about the money', async () => {
+    ok(await owner.post('/api/auth/login', { user_id: ids.owner ?? 1, pin: PIN.owner }));
+    ok(await manager.post('/api/auth/login', { user_id: ids.manager, pin: PIN.manager }));
+    ok(await w1.post('/api/auth/login', { user_id: ids.w1, pin: PIN.w1 }));
+    for (const url of ['/api/day', '/api/cash/live', '/api/me/session', '/api/tickets', '/api/reports/range', '/api/reports/staff', '/api/system/backups', '/api/system/printers', '/api/system/db', '/api/audit']) {
+      assert.equal((await w1.get(url)).status, 403, url + ' must be closed to a waiter');
+    }
+    ok(await w1.get('/api/tables')); ok(await w1.get('/api/menu'));
+    const info = ok(await w1.get('/api/system/info'));
+    assert.equal(info.data_dir, undefined); assert.equal(info.urls, undefined); assert.equal(typeof info.day_open, 'boolean');
+  });
+
+  await t.test('reports for any period, and what each person did in it', async () => {
+    ok(await manager.post('/api/day/open'));
+    const E = ok(await w1.get('/api/menu')).products.find((p) => p.name === 'Espresso').price_cents * 3;
+    const o = ok(await w1.post('/api/orders', { id: uid(), table_id: tables.tables[0].id }));
+    ok(await w1.post(`/api/orders/${o.id}/items`, { batch_id: uid(), items: [{ product_id: product('Espresso').id, qty: 3 }] }));
+    ok(await w1.post(`/api/orders/${o.id}/pay`, { payment_id: uid() }));
+    const live = ok(await manager.get('/api/cash/live'));
+    assert.equal(live.cash_cents, E); assert.equal(live.with_staff_cents, E); assert.equal(live.sessions.length, 1);
+    const today = new Date().toLocaleDateString('sv-SE');
+    const r = ok(await manager.get(`/api/reports/range?from=${today}&to=${today}`));
+    assert.equal(r.totals.sales_cents, E); assert.equal(r.by_day.length, 1); assert.equal(r.by_item[0].key, 'Espresso'); assert.equal(r.by_item[0].qty, 3);
+    assert.equal(ok(await manager.get('/api/reports/range?from=2001-01-01&to=2001-12-31')).totals.sales_cents, 0, 'a year with no sales is empty');
+    assert.equal((await manager.get('/api/reports/range?from=2026-02-01&to=2026-01-01')).status, 400);
+    assert.match((await manager.get(`/api/reports/range.csv?from=${today}&to=${today}`)).data, new RegExp('Total sales,' + (E / 100).toFixed(2)));
+    // settle 50 cents short: that is a loss on the waiter's profile
+    const s = (await sessionOf('w1')).session;
+    ok(await manager.post(`/api/sessions/${s.id}/settle`, { handed_cents: s.owed_cents - 50 }));
+    const staff = ok(await manager.get('/api/reports/staff'));
+    const me = staff.find((u) => u.id === ids.w1);
+    assert.equal(me.sales_cents, E); assert.equal(me.shortage_cents, -50); assert.equal(me.surplus_cents, 0); assert.equal(me.items, 3);
+    const detail = ok(await manager.get(`/api/reports/staff/${ids.w1}?from=${today}&to=${today}`));
+    assert.equal(detail.session_list.length, 1); assert.equal(detail.session_list[0].difference_cents, -50); assert.equal(detail.top_items[0].key, 'Espresso');
+    ok(await manager.post('/api/day/close'));
+  });
+
+  await t.test('the floor plan is saved per zone and comes back with the tables', async () => {
+    const zone = tables.zones[0].id, tb = tables.tables.find((x) => x.zone_id === zone);
+    assert.equal((await w1.put(`/api/plan/${zone}`, { tables: [], items: [] })).status, 403);
+    ok(await manager.put(`/api/plan/${zone}`, { tables: [{ id: tb.id, px: 120, py: 80, pw: 110, ph: 110, shape: 'round' }],
+      items: [{ kind: 'bar', x: 400, y: 40, w: 300, h: 70, label: 'Banaku' }, { kind: 'chair', x: 420, y: 120, w: 36, h: 36 }] }));
+    const view = ok(await w1.get('/api/tables'));
+    const got = view.tables.find((x) => x.id === tb.id);
+    assert.equal(got.px, 120); assert.equal(got.shape, 'round'); assert.equal(view.plan.filter((i) => i.zone_id === zone).length, 2);
+    assert.equal((await manager.put(`/api/plan/${zone}`, { tables: [], items: [{ kind: 'rocket', x: 1, y: 1, w: 20, h: 20 }] })).status, 400);
+    assert.equal(ok(await w1.get('/api/tables')).plan.filter((i) => i.zone_id === zone).length, 2, 'a refused save changes nothing');
+  });
+
+  await t.test('backups can be listed, looked into, uploaded and restored, by the owner PIN only', async () => {
+    ok(await owner.post('/api/system/backup'));
+    const list = ok(await owner.get('/api/system/backups'));
+    assert.ok(list.length >= 1);
+    const sum = ok(await owner.get(`/api/system/backups/${list[0].name}/summary`));
+    assert.equal(sum.cafe_name, 'Test Cafe'); assert.ok(sum.users >= 6);
+    assert.equal((await owner.get('/api/system/backups/..%2Fpos.db/summary')).status, 400, 'no wandering outside the backups folder');
+    assert.equal((await manager.post(`/api/system/backups/${list[0].name}/restore`, { pin: PIN.manager })).status, 403);
+    assert.equal((await owner.post(`/api/system/backups/${list[0].name}/restore`, { pin: PIN.manager })).status, 401, 'a manager PIN is not the owner PIN');
+    // change something, restore, and it is back as it was
+    ok(await owner.put('/api/admin/settings', { cafe_name: 'Changed' }));
+    const out = ok(await owner.post(`/api/system/backups/${list[0].name}/restore`, { pin: PIN.owner }));
+    assert.match(out.safety, /before-restore/);
+    ok(await owner.post('/api/auth/login', { user_id: ids.owner ?? 1, pin: PIN.owner }));
+    assert.equal(ok(await owner.get('/api/admin/all')).settings.cafe_name, 'Test Cafe');
+    assert.equal((await owner.post('/api/system/reset', { pin: PIN.manager })).status, 401, 'wiping takes the owner PIN and nothing else');
   });
 
   await t.test('the owner can log every other device out and stay in', async () => {

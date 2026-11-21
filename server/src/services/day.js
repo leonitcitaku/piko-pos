@@ -105,3 +105,23 @@ export function settle(ctx, sessionId, body) {
     return sessionTotals(sessionId);
   });
 }
+
+// What the owner wants to see at any moment: the money so far today and who is holding it.
+export function cashLive() {
+  const day = currentDay();
+  if (!day) return { day: null };
+  const sessions = all('SELECT id FROM sessions WHERE day_id = ? ORDER BY id', day.id).map((s) => sessionTotals(s.id));
+  const cash = sessions.reduce((n, s) => n + s.cash_cents, 0), house = sessions.reduce((n, s) => n + s.house_cents, 0);
+  const payouts = get("SELECT COALESCE(SUM(amount_cents), 0) AS n FROM cash_movements WHERE day_id = ? AND type = 'payout'", day.id).n;
+  const open = get(`SELECT COUNT(DISTINCT o.id) AS tables, COALESCE(SUM(ROUND(i.price_cents * i.qty * (100 - i.discount_pct) / 100.0)), 0) AS due
+    FROM orders o LEFT JOIN order_items i ON i.order_id = o.id AND i.status = 'sent' AND i.payment_id IS NULL WHERE o.status = 'open'`);
+  return {
+    day: { id: day.id, opened_at: day.opened_at }, sales_cents: cash + house, cash_cents: cash, house_cents: house, payout_cents: payouts,
+    open_tables: open.tables, open_due_cents: Math.round(open.due),
+    with_staff_cents: sessions.filter((s) => !s.settled_at).reduce((n, s) => n + s.owed_cents, 0),
+    handed_cents: sessions.filter((s) => s.settled_at).reduce((n, s) => n + (s.handed_cents || 0), 0),
+    sessions: sessions.map((s) => ({ id: s.id, user_name: s.user_name, role: s.role, cash_cents: s.cash_cents, house_cents: s.house_cents,
+      owed_cents: s.settled_at ? s.expected_cents : s.owed_cents, handed_cents: s.handed_cents, difference_cents: s.difference_cents,
+      settled: !!s.settled_at, open_tables: s.open_tables.length })),
+  };
+}

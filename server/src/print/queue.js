@@ -1,4 +1,4 @@
-import { get, all, run, db } from '../db.js';
+import { get, all, run, db, getSetting } from '../db.js';
 import { now } from '../clock.js';
 import { broadcast } from '../services/events.js';
 import { printJob } from './drivers.js';
@@ -6,7 +6,8 @@ import { ticketText } from './escpos.js';
 
 // Every ticket goes through this queue. Tickets print in order. If the printer fails, they wait and retry,
 // the waiter is warned, and when they finally print they carry a LATE mark with the original time.
-const LATE_AFTER_MS = 60_000;
+const lateAfterMs = () => (Number(getSetting('late_after_sec', '60')) || 60) * 1000;
+export const ticketWidth = () => { const w = Number(getSetting('ticket_width', '32')); return [32, 42, 48].includes(w) ? w : 32; };
 export const printerState = { ok: true, error: null, last_ok_at: null, waiting: 0 };
 let busy = false, timer = null;
 
@@ -28,7 +29,7 @@ export async function pump() {
       const row = get("SELECT * FROM print_jobs WHERE status = 'waiting' ORDER BY id LIMIT 1");
       if (!row) break;
       const job = parse(row);
-      job.was_late = job.attempts > 0 || now() - job.original_time > LATE_AFTER_MS ? 1 : 0;
+      job.was_late = job.attempts > 0 || now() - job.original_time > lateAfterMs() ? 1 : 0;
       try {
         await printJob(job);
         run("UPDATE print_jobs SET status = 'printed', printed_at = ?, was_late = ?, last_error = NULL WHERE id = ?", now(), job.was_late, job.id);
@@ -63,7 +64,7 @@ export function listTickets(dayId, limit = 300) {
   const rows = dayId
     ? all('SELECT j.*, u.name AS user_name FROM print_jobs j LEFT JOIN users u ON u.id = j.user_id WHERE j.day_id = ? ORDER BY j.id DESC LIMIT ?', dayId, limit)
     : all('SELECT j.*, u.name AS user_name FROM print_jobs j LEFT JOIN users u ON u.id = j.user_id ORDER BY j.id DESC LIMIT ?', limit);
-  return rows.map((r) => { const j = parse(r); return { ...j, text: ticketText(j) }; });
+  return rows.map((r) => { const j = parse(r); return { ...j, text: ticketText(j, ticketWidth()) }; });
 }
 
 export function reprint(jobId, userId) {

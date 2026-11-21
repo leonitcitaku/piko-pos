@@ -62,3 +62,13 @@ export const int = (v, name) => {
   if (!Number.isInteger(n)) throw bad('bad_number', `${name} must be a whole number`);
   return n;
 };
+
+// A request body as bytes, for file uploads.
+export function readRaw(req, limit = 300_000_000) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > limit) { reject(new HttpError(413, 'too_large')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}

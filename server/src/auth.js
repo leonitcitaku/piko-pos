@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { get, all, run, checkPin, hashPin } from './db.js';
+import { get, all, run, checkPin, hashPin, getSetting } from './db.js';
 import { HttpError, bad } from './http.js';
 import { now } from './clock.js';
 
@@ -9,7 +9,7 @@ const MAX_TRIES = 5;
 const LOCK_STEPS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
 const FORGET_MS = 60 * 60_000;
 // A phone left logged in forever is a key that never expires. Unused for this long, it stops working.
-const TOKEN_IDLE_MS = 14 * 24 * 60 * 60_000;
+const tokenIdleMs = () => Math.min(365, Math.max(1, Number(getSetting('login_idle_days', '14')) || 14)) * 24 * 60 * 60_000;
 export const APPROVERS = ['manager', 'owner'];
 // Managers and owners approve voids, free drinks and discounts, so their PIN is worth guessing.
 export const pinRule = (role) => (APPROVERS.includes(role)
@@ -53,7 +53,7 @@ export function userFromToken(token) {
   if (!token) return null;
   const row = get('SELECT u.*, t.last_seen FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE t.token = ? AND u.active = 1', token);
   if (!row) return null;
-  if (now() - row.last_seen > TOKEN_IDLE_MS) { run('DELETE FROM auth_tokens WHERE token = ?', token); return null; }
+  if (now() - row.last_seen > tokenIdleMs()) { run('DELETE FROM auth_tokens WHERE token = ?', token); return null; }
   // Only ever forward, like the clock guard. If the PC clock jumps back a year, stamping last_seen
   // into the past would log the whole cafe out the moment someone fixed the clock.
   if (now() > row.last_seen) run('UPDATE auth_tokens SET last_seen = ? WHERE token = ?', now(), token);

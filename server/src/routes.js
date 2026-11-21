@@ -8,7 +8,9 @@ import * as dayS from './services/day.js';
 import * as reports from './services/reports.js';
 import { audit } from './services/audit.js';
 import { addClient, broadcast, clientCount } from './services/events.js';
-import { runBackup } from './services/backup.js';
+import { runBackup, listBackups, backupSummary, backupFile, saveUploaded, restoreBackup, dbInfo } from './services/backup.js';
+import { listPrinters } from './util/printers.js';
+import fs from 'node:fs';
 import { listTickets, reprint, skip, enqueueTicket, printerState, pump } from './print/queue.js';
 import { qrSvg } from './util/qr.js';
 
@@ -78,10 +80,10 @@ export function registerRoutes(r, cfg) {
   r.post('/api/orders/:id/move-items', { roles: STAFF }, (c) => orders.moveItems(c, c.params.id, c.body));
   r.post('/api/orders/:id/pass', { roles: STAFF }, (c) => orders.passOrder(c, c.params.id, c.body));
   r.post('/api/orders/:id/pay', { roles: STAFF }, (c) => orders.pay(c, c.params.id, c.body));
-  r.get('/api/me/session', { roles: STAFF }, (c) => orders.mySession(c));
+  r.get('/api/me/session', { roles: BOSS }, (c) => orders.mySession(c));
 
   // ---------- tickets ----------
-  r.get('/api/tickets', { roles: STAFF }, () => {
+  r.get('/api/tickets', { roles: BOSS }, () => {
     const day = orders.currentDay();
     return { printer: { ...printerState, mode: getSetting('printer_mode', 'off') }, tickets: listTickets(day?.id) };
   });
@@ -95,7 +97,8 @@ export function registerRoutes(r, cfg) {
   r.post('/api/tickets/:id/skip', { roles: BOSS }, (c) => { skip(int(c.params.id, 'id')); audit(c, 'ticket_skipped', c.params.id); return { ok: true }; });
 
   // ---------- business day, sessions, cash ----------
-  r.get('/api/day', { roles: STAFF }, () => dayS.dayView());
+  r.get('/api/day', { roles: BOSS }, () => dayS.dayView());
+  r.get('/api/cash/live', { roles: BOSS }, () => dayS.cashLive());
   r.post('/api/day/open', { roles: BOSS }, (c) => dayS.openBusinessDay(c));
   r.post('/api/day/close', { roles: BOSS }, (c) => dayS.closeBusinessDay(c));
   r.post('/api/day/catch-up', { roles: BOSS }, (c) => dayS.setCatchUp(c, !!c.body.on));
@@ -108,6 +111,11 @@ export function registerRoutes(r, cfg) {
   r.get('/api/reports/day', { roles: BOSS }, (c) => reports.dayReport(c.query.id ? int(c.query.id, 'id') : null));
   r.get('/api/reports/day.csv', { roles: BOSS }, (c) => ({ __raw: reports.dayReportCsv(c.query.id ? int(c.query.id, 'id') : null), type: 'text/csv; charset=utf-8', filename: `day-${c.query.id || 'latest'}.csv` }));
   r.get('/api/reports/session/:id', { roles: BOSS }, (c) => orders.sessionTotals(int(c.params.id, 'id')));
+  r.get('/api/reports/range', { roles: BOSS }, (c) => { const { from, to } = reports.parseRange(c.query); return reports.rangeReport(from, to); });
+  r.get('/api/reports/range.csv', { roles: BOSS }, (c) => { const { from, to } = reports.parseRange(c.query);
+    return { __raw: reports.rangeReportCsv(from, to), type: 'text/csv; charset=utf-8', filename: `report-${c.query.from || 'start'}-${c.query.to || 'now'}.csv` }; });
+  r.get('/api/reports/staff', { roles: BOSS }, (c) => { const { from, to } = reports.parseRange(c.query); return reports.staffReport(from, to); });
+  r.get('/api/reports/staff/:id', { roles: BOSS }, (c) => { const { from, to } = reports.parseRange(c.query); return reports.staffDetail(int(c.params.id, 'id'), from, to); });
   r.get('/api/audit', { roles: BOSS }, (c) => {
     const rows = all('SELECT l.*, u.name AS user_name, u.role AS user_role FROM audit_log l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.id DESC LIMIT ?', Math.min(int(c.query.limit || 200, 'limit'), 1000));
     return rows.map((l) => { try { return { ...l, detail: JSON.parse(l.detail) }; } catch { return l; } });
@@ -155,13 +163,16 @@ export function registerRoutes(r, cfg) {
     return { id: Number(res.lastInsertRowid) };
   });
   r.put('/api/admin/settings', { roles: BOSS }, (c) => {
-    const managerKeys = ['printer_mode', 'printer_host', 'printer_port', 'printer_share'];
-    const ownerKeys = [...managerKeys, 'cafe_name', 'cancel_window_sec', 'backup_dir', 'idle_lock_sec', 'fiscal_mode'];
+    const managerKeys = ['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width'];
+    const ownerKeys = [...managerKeys, 'cafe_name', 'cancel_window_sec', 'backup_dir', 'idle_lock_sec', 'fiscal_mode', 'backups_keep', 'login_idle_days', 'late_after_sec'];
+    const ranges = { cancel_window_sec: [0, 3600], idle_lock_sec: [10, 3600], backups_keep: [5, 365], login_idle_days: [1, 365], late_after_sec: [10, 3600] };
     const allowed = c.user.role === 'owner' ? ownerKeys : managerKeys;
     for (const [k, v] of Object.entries(c.body || {})) {
       if (!allowed.includes(k)) throw new HttpError(403, 'not_allowed', k);
       if (k === 'fiscal_mode' && v !== 'off') throw bad('fiscal_not_ready', 'No fiscal driver is installed yet');
-      if (k === 'printer_mode' && !['off', 'network', 'windows', 'file'].includes(v)) throw bad('bad_value', k);
+      if (k === 'printer_mode' && !['off', 'network', 'windows', 'winraw', 'file'].includes(v)) throw bad('bad_value', k);
+      if (k === 'ticket_width' && !['32', '42', '48'].includes(String(v))) throw bad('bad_value', k);
+      if (ranges[k]) { const n = Number(v); if (!Number.isInteger(n) || n < ranges[k][0] || n > ranges[k][1]) throw bad('bad_value', `${k} must be between ${ranges[k][0]} and ${ranges[k][1]}`); }
       setSetting(k, String(v).slice(0, 200));
     }
     audit(c, 'settings', null, c.body);
@@ -225,9 +236,13 @@ export function registerRoutes(r, cfg) {
   });
 
   // ---------- system ----------
-  r.get('/api/system/info', { roles: STAFF }, () => {
+  r.get('/api/system/info', { roles: STAFF }, (c) => {
     const day = orders.currentDay();
     const last = Number(getSetting('last_event_at', '0'));
+    if (!BOSS.includes(c.user.role)) {
+      return { cafe_name: getSetting('cafe_name', 'Cafe'), clock_wrong: !!last && now() < last - 5 * 60_000, day_open: !!day, catch_up: !!day?.catch_up,
+        printer: { ok: printerState.ok, mode: getSetting('printer_mode', 'off'), error: printerState.ok ? null : 'problem' }, idle_lock_sec: Number(getSetting('idle_lock_sec', '60')) };
+    }
     return {
       version: cfg.version, port: cfg.port, urls: lanUrls(cfg.port), cafe_name: getSetting('cafe_name', 'Cafe'), clock: now(),
       clock_wrong: !!last && now() < last - 5 * 60_000, phones_connected: clientCount(),
@@ -237,8 +252,44 @@ export function registerRoutes(r, cfg) {
       idle_lock_sec: Number(getSetting('idle_lock_sec', '60')), data_dir: dataDir, fiscal_mode: getSetting('fiscal_mode', 'off'),
     };
   });
-  r.get('/api/system/qr.svg', { roles: STAFF }, (c) => ({ __raw: qrSvg(c.query.url || lanUrls(cfg.port)[0] || `http://localhost:${cfg.port}`), type: 'image/svg+xml' }));
+  r.get('/api/system/qr.svg', { roles: BOSS }, (c) => ({ __raw: qrSvg(c.query.url || lanUrls(cfg.port)[0] || `http://localhost:${cfg.port}`), type: 'image/svg+xml' }));
   r.post('/api/system/backup', { roles: BOSS }, async () => runBackup('manual'));
+  // ---------- printers on this PC, the database and its backups ----------
+  r.get('/api/system/printers', { roles: BOSS }, async () => ({ printers: await listPrinters() }));
+  r.get('/api/system/db', { roles: BOSS }, () => dbInfo());
+  r.get('/api/system/backups', { roles: BOSS }, () => listBackups());
+  r.get('/api/system/backups/:name/summary', { roles: BOSS }, (c) => backupSummary(c.params.name));
+  r.get('/api/system/backups/:name/download', { roles: OWNER }, (c) => ({ __raw: fs.readFileSync(backupFile(c.params.name)), type: 'application/octet-stream', filename: c.params.name }));
+  r.post('/api/system/backups/upload', { roles: OWNER, raw: true }, (c) => { const out = saveUploaded(c.body); audit(c, 'backup_uploaded', out.name); return out; });
+  r.post('/api/system/backups/:name/restore', { roles: OWNER }, async (c) => {
+    auth.requireOwnerPin(c, c.body.pin);
+    const out = await restoreBackup(c.params.name);
+    audit(c, 'backup_restored', c.params.name, { safety: out.safety });
+    broadcast('day'); broadcast('tables'); broadcast('menu');
+    return out;
+  });
+  // The owner's floor plan for one zone: where the tables stand, and the bar, chairs, walls and labels around them.
+  r.put('/api/plan/:zone', { roles: BOSS }, (c) => {
+    const zone = int(c.params.zone, 'zone');
+    if (!get('SELECT 1 AS x FROM zones WHERE id = ?', zone)) throw new HttpError(404, 'no_zone');
+    const box = (o) => { const v = {}; for (const k of ['x', 'y', 'w', 'h']) { v[k] = int(o[k], k); if (v[k] < 0 || v[k] > 6000) throw bad('bad_value', k); } if (v.w < 10 || v.h < 10) throw bad('bad_value', 'size'); return v; };
+    const KINDS = ['bar', 'chair', 'wall', 'label', 'plant', 'door'];
+    tx(() => {
+      for (const t of c.body.tables || []) {
+        const b = box({ x: t.px, y: t.py, w: t.pw, h: t.ph });
+        run("UPDATE tables SET px = ?, py = ?, pw = ?, ph = ?, shape = ? WHERE id = ? AND zone_id = ?", b.x, b.y, b.w, b.h, t.shape === 'round' ? 'round' : 'square', int(t.id, 'id'), zone);
+      }
+      run('DELETE FROM plan_items WHERE zone_id = ?', zone);
+      for (const it of (c.body.items || []).slice(0, 400)) {
+        if (!KINDS.includes(it.kind)) throw bad('bad_value', 'kind');
+        const b = box(it);
+        run('INSERT INTO plan_items(zone_id, kind, x, y, w, h, label) VALUES(?,?,?,?,?,?,?)', zone, it.kind, b.x, b.y, b.w, b.h, it.label ? String(it.label).slice(0, 40) : null);
+      }
+    });
+    audit(c, 'plan_saved', zone, { tables: (c.body.tables || []).length, items: (c.body.items || []).length });
+    broadcast('tables');
+    return { ok: true };
+  });
   // For a phone that went missing: every other device has to log in again. This screen stays in.
   r.post('/api/system/logout-all', { roles: OWNER }, (c) => {
     const n = auth.logoutEveryoneElse(c.token);
