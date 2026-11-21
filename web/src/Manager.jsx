@@ -312,7 +312,7 @@ function StaffTab({ app }) {
           <Field label={t('Name')}><input className="input" value={dlg.name} onChange={(e) => setDlg({ ...dlg, name: e.target.value })} /></Field>
           <Field label={t('Role')}><select className="input" value={dlg.role} onChange={(e) => setDlg({ ...dlg, role: e.target.value })}>{roles.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></Field>
           <Field label={t('Language')}><select className="input" value={dlg.language} onChange={(e) => setDlg({ ...dlg, language: e.target.value })}><option value="sq">Shqip</option><option value="en">English</option></select></Field>
-          <Field label={dlg.isNew ? t('PIN (4 to 6 digits)') : t('New PIN')}><input className="input" inputMode="numeric" value={dlg.pin} onChange={(e) => setDlg({ ...dlg, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })} /></Field>
+          <Field label={dlg.isNew ? t(dlg.role === 'manager' || dlg.role === 'owner' ? 'PIN (6 digits)' : 'PIN (4 digits)') : t('New PIN')}><input className="input" inputMode="numeric" value={dlg.pin} onChange={(e) => setDlg({ ...dlg, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })} /></Field>
           {!dlg.isNew && <Toggle label={t('Active')} on={!!dlg.active} onChange={(v) => setDlg({ ...dlg, active: v ? 1 : 0 })} />}
           <button className="btn primary big" disabled={!dlg.name.trim() || (dlg.isNew && dlg.pin.length < 4)} onClick={async () => {
             const body = { name: dlg.name, role: dlg.role, language: dlg.language, active: !!dlg.active, pin: dlg.pin || undefined };

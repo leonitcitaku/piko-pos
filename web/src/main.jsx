@@ -20,7 +20,7 @@ function Setup({ onDone }) {
         <h1>{t('Welcome. Set up the owner account.')}</h1>
         <label className="field"><span>{t('Cafe name')}</span><input value={f.cafe_name} onChange={(e) => setF({ ...f, cafe_name: e.target.value })} autoFocus /></label>
         <label className="field"><span>{t('Your name')}</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></label>
-        <label className="field"><span>{t('PIN (4 to 6 digits)')}</span><input value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" type="password" required minLength={4} /></label>
+        <label className="field"><span>{t('PIN (6 digits)')}</span><input value={f.pin} onChange={(e) => setF({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" type="password" required minLength={6} /></label>
         {err && <p className="pin-error">{err}</p>}
         <button className="btn primary big" type="submit">{t('Start')}</button>
       </form>
@@ -63,7 +63,7 @@ function Login({ cafe, onDone, onLang }) {
           <>
             <h1>{who.name}</h1>
             <p className="muted">{t('Enter your PIN')}</p>
-            <PinPad onDone={tryPin} error={err} busy={busy} />
+            <PinPad onDone={tryPin} error={err} busy={busy} len={who.role === 'manager' || who.role === 'owner' ? 6 : 4} />
             <button className="btn ghost" onClick={() => { setWho(null); setErr(''); }}>{t('Back')}</button>
           </>
         )}

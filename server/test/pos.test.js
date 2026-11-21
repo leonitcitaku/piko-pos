@@ -347,6 +347,7 @@ test('cafe POS', async (t) => {
   await t.test('a manager or owner PIN must be 6 digits, including on promotion', async () => {
     assert.equal((await owner.post('/api/admin/users', { name: 'Shkurt', pin: '1234', role: 'manager' })).status, 400);
     assert.equal((await owner.post('/api/admin/users', { name: 'Shkurt', pin: '1234', role: 'owner' })).status, 400);
+    assert.equal((await owner.post('/api/admin/users', { name: 'Gjate', pin: '123456', role: 'waiter' })).status, 400, 'a staff PIN is exactly 4 digits');
     const id = ok(await owner.post('/api/admin/users', { name: 'Vogel', pin: '1234', role: 'waiter' })).id;
     // Promoting a waiter must not leave them approving voids with the 4 digits they already had.
     let r = await owner.put(`/api/admin/users/${id}`, { role: 'manager' });

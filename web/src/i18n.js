@@ -4,7 +4,7 @@ const sq = {
   'Who are you?': 'Kush je ti?', 'Enter your PIN': 'Shkruaj PIN-in', 'Back': 'Kthehu', 'Wrong PIN': 'PIN i gabuar',
   'Too many wrong PINs. Wait a minute.': 'Shumë PIN-a të gabuar. Prit një minutë.',
   'Welcome. Set up the owner account.': 'Mirë se erdhe. Krijo llogarinë e pronarit.', 'Your name': 'Emri yt', 'Cafe name': 'Emri i lokalit',
-  'PIN (4 to 6 digits)': 'PIN (4 deri 6 shifra)', 'Start': 'Fillo', 'owner': 'pronar', 'manager': 'menaxher', 'waiter': 'kamarier', 'bartender': 'banakier',
+  'PIN (6 digits)': 'PIN (6 shifra)', 'PIN (4 digits)': 'PIN (4 shifra)', 'Start': 'Fillo', 'owner': 'pronar', 'manager': 'menaxher', 'waiter': 'kamarier', 'bartender': 'banakier',
   'Free': 'E lirë', 'Send to bar': 'Dërgo në banak', 'Sending': 'Duke dërguar', 'Retrying': 'Duke provuar prapë', 'Sent': 'U dërgua',
   'Pay': 'Paguaj', 'Total': 'Totali', 'Due': 'Për pagesë', 'Paid': 'Paguar', 'Ordered': 'Porositur', 'New items': 'Artikuj të rinj',
   'Nothing ordered yet. Pick items below.': 'Ende asgjë. Zgjidh artikujt më poshtë.', 'Sold out': 'S\'ka', 'Note': 'Shënim', 'Note, for example no ice': 'Shënim, për shembull pa akull',

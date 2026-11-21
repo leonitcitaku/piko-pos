@@ -14,7 +14,7 @@ export const APPROVERS = ['manager', 'owner'];
 // Managers and owners approve voids, free drinks and discounts, so their PIN is worth guessing.
 export const pinRule = (role) => (APPROVERS.includes(role)
   ? { re: /^\d{6}$/,   message: 'A manager or owner PIN must be 6 digits' }
-  : { re: /^\d{4,6}$/, message: 'PIN must be 4 to 6 digits' });
+  : { re: /^\d{4}$/,   message: 'A staff PIN must be 4 digits' });   // an exact length lets the PIN pad send by itself
 
 export function assertNotLocked(device) {
   const a = get('SELECT * FROM pin_attempts WHERE device = ?', device);
