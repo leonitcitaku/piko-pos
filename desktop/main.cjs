@@ -8,7 +8,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const packaged = app.isPackaged;
-const appRoot = packaged ? path.join(process.resourcesPath, 'app') : path.join(__dirname, '..');
+const appRoot = packaged ? path.join(process.resourcesPath, 'pos') : path.join(__dirname, '..');
 const serverEntry = path.join(appRoot, 'server', 'src', 'index.js');
 const bundledNode = path.join(process.resourcesPath || '', 'node', 'node.exe');
 const nodePath = packaged && fs.existsSync(bundledNode) ? bundledNode : 'node';
@@ -26,7 +26,7 @@ function startServer() {
   const log = fs.openSync(path.join(dataDir, 'server.log'), 'a');
   server = fork(serverEntry, [], {
     execPath: nodePath, execArgv: ['--disable-warning=ExperimentalWarning'],
-    env: { ...process.env, POS_DATA_DIR: dataDir, POS_WEB_DIR: path.join(appRoot, 'web', 'dist') },
+    env: { ...process.env, POS_DATA_DIR: dataDir, POS_WEB_DIR: path.join(appRoot, 'web', 'dist'), POS_VERSION: app.getVersion() },
     stdio: ['ignore', log, log, 'ipc'],
   });
   server.on('message', (m) => {

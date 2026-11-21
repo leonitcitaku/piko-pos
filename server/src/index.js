@@ -11,7 +11,11 @@ import { runBackup } from './services/backup.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
-const VERSION = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+// Packaged, package.json lives inside the Electron asar and not next to the server,
+// so the desktop shell passes the version down instead of shipping the file twice.
+const pkgFile = path.join(root, 'package.json');
+const VERSION = process.env.POS_VERSION
+  || (fs.existsSync(pkgFile) ? JSON.parse(fs.readFileSync(pkgFile, 'utf8')).version : '0.0.0');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.map': 'application/json' };
 

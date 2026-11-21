@@ -38,7 +38,7 @@ Treat those three as the first things to check on a real Windows PC with the rea
 
 ## Build the Windows installer
 
-On a Windows PC with internet:
+On any machine with internet, a Mac included:
 
 ```
 npm install
@@ -46,7 +46,13 @@ npm install --save-dev electron electron-builder
 npm run dist
 ```
 
+The build is pinned to **x64** on the command line. Without that, electron-builder follows the
+machine it runs on, so building on an Apple Silicon Mac quietly produced a Windows **ARM64** app
+around an x64 `node.exe`. Do not remove the `--x64`.
+
 `npm run dist` builds the web app, downloads the pinned Node into `vendor/node/node.exe`, and produces the installer in `release/`.
+Inside the installer the server lives in `resources/pos`, not `resources/app`: Electron treats `resources/app` as the application
+itself and would load it instead of the asar.
 The app icon (`desktop/icon.ico`) and tray icon (`desktop/tray.png`) are included. Replace them with your own design any time.
 The exe is unsigned, so Windows SmartScreen will warn on first run: More info, then Run anyway.
 
