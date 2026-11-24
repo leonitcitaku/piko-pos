@@ -10,8 +10,8 @@ const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', 
 const eur = (c) => ((c || 0) / 100).toFixed(2) + ' EUR';
 const hhmmDay = (ms) => { const d = new Date(ms); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${hhmm(ms)}`; };
 
-// 'big' lines print double width, so they only fit half as many characters as the rest.
-const budget = (style, width) => (style === 'big' ? Math.floor(width / 2) : width);
+// 'big' and 'item' lines print double width, so they only fit half as many characters as the rest.
+const budget = (style, width) => (style === 'big' || style === 'item' ? Math.floor(width / 2) : width);
 
 // Word aware wrapping. Keeps the leading spaces of the first line, puts `indent` in front of the
 // continuation lines so the bartender sees one item and not two, and hard splits a word that is too long.
@@ -36,7 +36,8 @@ export function wrapText(text, width, indent = '') {
   return out;
 }
 
-// Returns a list of { text, style } lines. style: 'big' | 'bold' | 'center' | 'rule' | undefined
+// Returns a list of { text, style } lines. style: 'big' | 'item' | 'bold' | 'center' | 'rule' | undefined
+// 'item' is as big as 'big' (double width and height) but stays on the left, for the bartender to read from a distance.
 export function ticketLines(job, width = DEFAULT_WIDTH) {
   const c = job.content, out = [];
   const push = (text, style, indent = '') => {
@@ -51,7 +52,8 @@ export function ticketLines(job, width = DEFAULT_WIDTH) {
   // "*** VONESE / LATE ***" would wrap to a ragged orphan line on the paper.
   if (job.was_late) { push('*** VONESE ***', 'big'); push('*** LATE ***', 'big'); push('Derguar ne ' + hhmm(job.original_time), 'big'); }
   if (isCopy) { push('*** KOPJE ***', 'big'); push('*** COPY ***', 'big'); }
-  push(TITLES[job.kind] || 'POROSI', 'center');
+  // A cancel must never pass for an order: its title is as big as the items, top and bottom.
+  push(TITLES[job.kind] || 'POROSI', job.kind === 'cancel' ? 'big' : 'center');
   // The slip a waiter is settled with: what they started with, what they took, what they hand in.
   if (job.kind === 'shift') {
     // Label on the left, amount on the right. Added as is: the word wrapper would squeeze the gap out.
@@ -106,11 +108,13 @@ export function ticketLines(job, width = DEFAULT_WIDTH) {
   push(`${c.zone} | ${c.waiter || ''} | ${hhmm(job.original_time)}`, 'center');
   push('', 'rule');
   for (const l of c.lines || []) {
-    push(`${job.kind === 'cancel' ? 'ANULO ' : ''}${l.qty} x ${l.name}`, 'bold', '      ');
+    // Items are big. On a cancel ticket the count carries a minus, so "-2 x Espresso" still fits one big line.
+    push(`${job.kind === 'cancel' ? '-' : ''}${l.qty} x ${l.name}`, 'item', '    ');
     for (const m of l.mods || []) push('   + ' + m, undefined, '     ');
     if (l.note) push('   ! ' + l.note, 'bold', '     ');
   }
   push('', 'rule');
+  if (job.kind === 'cancel') push(TITLES.cancel, 'big');
   push('#' + job.id, 'center');
   return out;
 }
@@ -133,8 +137,8 @@ export function ticketBytes(job, width = DEFAULT_WIDTH) {
     // Reset bold too, or a rule after a bold note line inherits it and prints heavy.
     if (l.style === 'rule') { parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0x00, ESC, 0x45, 0]), Buffer.from('-'.repeat(width) + '\n', 'ascii')); continue; }
     const align = l.style === 'big' || l.style === 'center' ? 1 : 0;
-    const size = l.style === 'big' ? 0x11 : 0x00;          // double width and height
-    const bold = l.style === 'big' || l.style === 'bold' ? 1 : 0;
+    const size = l.style === 'big' || l.style === 'item' ? 0x11 : 0x00;          // double width and height
+    const bold = l.style === 'big' || l.style === 'item' || l.style === 'bold' ? 1 : 0;
     parts.push(Buffer.from([ESC, 0x61, align, GS, 0x21, size, ESC, 0x45, bold]), Buffer.from(l.text + '\n', 'ascii'));
   }
   parts.push(Buffer.from([ESC, 0x61, 0, GS, 0x21, 0, ESC, 0x45, 0]), Buffer.from('\n\n\n\n', 'ascii'), Buffer.from([GS, 0x56, 0x42, 0x00])); // feed and cut

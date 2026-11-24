@@ -81,6 +81,7 @@ test('cafe POS', async (t) => {
     assert.equal((await tickets()).filter((x) => x.order_id === o.id).length, 1);
     assert.equal(printer.received.length, 1);
     assert.match(printer.received[0], /TAVOLINA 1/); assert.match(printer.received[0], /2 x Espresso/);
+    assert.match(printer.received[0], /\x1d!\x11\x1bE\x012 x Espresso/, 'items print double height and width, in bold');
     ids.order1 = o.id;
   });
 
