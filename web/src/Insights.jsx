@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { get, money, dateTime } from './api.js';
 import { t } from './i18n.js';
+import { StockSection } from './Stock.jsx';
 import { Modal } from './ui.jsx';
 import { errText } from './util.js';
 
@@ -95,6 +96,7 @@ export function RangeReport() {
             <div><h2>{t('By hour')}</h2><Bars rows={r.by_hour.map((x) => ({ ...x, key: String(x.key).padStart(2, '0') + ':00' }))} /></div>
             <div><h2>{t('By item')}</h2><Bars rows={r.by_item.slice(0, 40)} /></div>
           </div>
+          <StockSection s={r.stock} />
           {r.payouts.length > 0 && <><h2>{t('Paid out')}</h2><table className="grid"><tbody>{r.payouts.map((x) => <tr key={x.id}><td>{dateTime(x.created_at)}</td><td>{x.reason}</td><td>{x.user_name || t('House cash')}</td><td className="r"><Money c={x.amount_cents} /></td></tr>)}</tbody></table></>}
           <dl className="facts">
             <div><dt>{t('Surplus at settling')}</dt><dd><Money c={r.totals.surplus_cents} /></dd></div>

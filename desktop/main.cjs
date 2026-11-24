@@ -2,7 +2,7 @@
 // It starts the POS server as its own process on the bundled Node, keeps it alive,
 // shows Order mode and the manager area in a window, and lives in the tray when the window is closed.
 // NOTE: written to plan but not yet run on Windows. See README, "What is tested and what is not".
-const { app, BrowserWindow, Tray, Menu, clipboard, dialog, ipcMain, nativeImage, shell, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, shell, powerSaveBlocker } = require('electron');
 const { fork, execFile } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -16,7 +16,15 @@ const dataDir = process.platform === 'win32'
   ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'CafePOS')
   : path.join(app.getPath('userData'), 'data');
 
-let win = null, tray = null, server = null, info = null, quitting = false, restarts = 0;
+let win = null, tray = null, server = null, info = null, quitting = false, restarts = 0, fatal = null;
+
+// A Windows notification from the server (low stock). Clicking it brings the till forward on the stock screen.
+function notify(m) {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title: m.title || 'Cafe POS', body: m.body || '', silent: false });
+  n.on('click', () => { showWindow(); if (win && info && m.path) win.loadURL(`http://localhost${info.port === 80 ? '' : ':' + info.port}${m.path}${m.path.includes('?') ? '&' : '?'}pc=1`); });
+  n.show();
+}
 
 // A till draws text and buttons; it has no use for the graphics card. On older PCs and older Windows the
 // accelerated path left the window open but empty (the "blank screen"), so everything is drawn in software.
@@ -36,10 +44,12 @@ function startServer() {
   });
   server.on('message', (m) => {
     if (m && m.type === 'ready') { info = m; restarts = 0; refreshTray(); if (win) win.loadURL(localUrl()); else createWindow(); }
+    if (m && m.type === 'fatal') { fatal = m; dialog.showMessageBox({ type: 'error', title: 'Cafe POS', message: 'Cafe POS cannot start', detail: m.message }).then(() => { quitting = true; app.quit(); }); }
+    if (m && m.type === 'notify') notify(m);
   });
   server.on('exit', (code) => {
     server = null; info = null; refreshTray();
-    if (quitting) return;
+    if (quitting || fatal) return;
     restarts += 1;                                   // the server crashed: bring it back
     setTimeout(startServer, Math.min(1000 * restarts, 10000));
   });

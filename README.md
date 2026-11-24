@@ -20,10 +20,12 @@ To see bar tickets without a printer: Manager, Settings, Printer, "Save to files
 
 **Tested for real:**
 
-- The server, with 31 automated tests (`npm test`): repeated sends, two waiters on one table, six devices at once, printer
+- The server, with 49 automated tests (`npm test`): repeated sends, two waiters on one table, six devices at once, printer
   off and LATE tickets, COPY reprints, cancelling part of a line, split bills, on the house, discount, sold out, move, merge,
   floats, payouts, settlement, day close, backup, restore and upload, catch up mode, clock guard, PIN rules and lockout,
-  idle logins, staff lockdown, period reports, staff profiles, the floor plan, the shift slip.
+  idle logins, staff lockdown, period reports, staff profiles, the floor plan, the shift slip, stock (recipes, cancels,
+  counts during service, warnings and their slips, average cost and profit, corrections), and updating a real 1.0.0
+  database (`server/test/fixtures/v1.0.0.db`) without losing a row.
 - The installer and the desktop app, on a Windows 10 laptop (build 10240): install, first start, port 80, the firewall
   rule, start with the PC, crash recovery of the built in server, surviving a hard power off with data intact.
 - The web app in a browser at phone and PC size, by touch and by keyboard: login, ordering, paying, the manager tabs,
@@ -48,6 +50,33 @@ To see bar tickets without a printer: Manager, Settings, Printer, "Save to files
 5. In the router, reserve the PC's address (the System tab shows the IP and MAC to use) so the link never changes.
 
 Press F1 in the app for every keyboard shortcut.
+
+## Updating a cafe to a new version
+
+Run the new `Cafe POS Setup x.y.z.exe` on the cafe PC, over the old one. Do not uninstall first.
+The data lives in `C:\ProgramData\CafePOS`, outside the program folder, so the installer never touches it.
+
+On its first start the new version brings the database up to date by itself. Before it changes anything it saves
+the data exactly as the old version left it, as `backups\pos-<date>-before-update-v<old>.db`, which can be restored
+from Manager, System. An older version refuses to open data from a newer one and changes nothing.
+
+To be extra safe, copy the whole `C:\ProgramData\CafePOS` folder to a USB stick before updating.
+
+## Stock
+
+Manager, Stock sets it up from the menu: coffee by the kg (1 kg = 110 shots), tea by the box (20 filters), and one
+item per bottled drink. Every number can be changed. Each product and extra has a "Stock use" in Manager, Menu.
+
+- Every sale takes its stock off when it is sent. A cancel inside the free window puts it back; a later cancel counts
+  as waste unless the manager ticks "put it back in stock".
+- Stock never blocks a sale. It can go below zero.
+- Bartenders, managers and the owner record deliveries, waste and counts (Stock in the top bar). Managers and the owner
+  also set up items and recipes, enter prices, see the history and undo a wrong entry.
+- When an item falls to its warning level or runs out: a banner on the bartender and manager screens, a dot on the
+  product, a short message to whoever sent the order, a slip on the bar printer and a Windows notification on the
+  POS PC. Each fires once per crossing. Both the slip and the notification can be turned off in Manager, Settings.
+- The shopping list shows what is low and how many packs bring it back to full. It can be printed.
+- Reports show cost of goods, gross profit per product, on the house cost, waste and count differences.
 
 ## Build the Windows installer
 
@@ -76,12 +105,13 @@ To try the desktop shell without building an installer: `npx electron desktop/ma
 ```
 server/src/index.js        entry: http server, static files, port 80 with 8080 as fallback
 server/src/routes.js       every API route
-server/src/services/       orders, day and sessions, reports, backup, events, audit
+server/src/services/       orders, day and sessions, reports, backup, events, audit, stock
+server/src/stockRoutes.js  the stock API
 server/src/print/          print queue, ESC/POS tickets, printer drivers (network, Windows share, file)
 server/src/fiscal/         the fiscal hook. Off. A real driver plugs in here later
 server/src/util/qr.js      QR code generator, no dependencies
 server/test/               the automated tests
-web/src/                   React app: Floor.jsx (tables, order, pay), Manager.jsx, main.jsx (login, shell), i18n.js
+web/src/                   React app: Floor.jsx (tables, order, pay), Manager.jsx, Stock.jsx, main.jsx (login, shell), i18n.js
 web/styles.css             all styling
 desktop/                   Electron shell and installer script
 scripts/build.mjs          builds web/dist with esbuild
@@ -108,5 +138,6 @@ On Windows the installed app keeps its data in `C:\ProgramData\CafePOS`: `pos.db
 ## Roles
 
 - **Waiter, bartender:** the tables only: take orders, take payment. They see no cash totals, sessions or reports.
+  Bartenders also see stock: deliveries, waste and counts, without prices.
 - **Manager:** everything above plus the day, settlement, payouts, tickets, reports, menu names, tables, printer settings.
 - **Owner:** everything, plus prices, staff and PINs, other settings, and wiping test data.

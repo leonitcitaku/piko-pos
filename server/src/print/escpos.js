@@ -5,7 +5,8 @@ const TRANSLIT = { 'ë': 'e', 'Ë': 'E', 'ç': 'c', 'Ç': 'C' };
 export const plain = (s) => String(s ?? '').replace(/[ëËçÇ]/g, (c) => TRANSLIT[c]).replace(/[^\x20-\x7E]/g, '?');
 
 const hhmm = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
-const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', copy: 'POROSI', test: 'TEST', shift: 'RAPORTI I NDERRIMIT' };
+const TITLES = { order: 'POROSI', addition: 'SHTESE', cancel: '*** ANULIM ***', copy: 'POROSI', test: 'TEST', shift: 'RAPORTI I NDERRIMIT',
+  stock: '*** STOKU I ULET ***', stock_list: 'LISTA E BLERJES' };
 const eur = (c) => ((c || 0) / 100).toFixed(2) + ' EUR';
 const hhmmDay = (ms) => { const d = new Date(ms); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${hhmm(ms)}`; };
 
@@ -76,6 +77,27 @@ export function ticketLines(job, width = DEFAULT_WIDTH) {
     row('Tavolina te paguara', String(c.tables_paid || 0));
     if ((c.open_tables || []).length) push('TAVOLINA TE HAPURA: ' + c.open_tables.join(', '), 'bold');
     if (!c.settled_at) { push(''); push('Nenshkrimi: ______________'); }
+    push('#' + job.id, 'center');
+    return out;
+  }
+  // A stock warning: which items are low or gone and what is left of them.
+  if (job.kind === 'stock') {
+    push(c.cafe || 'Cafe', 'center');
+    push(hhmmDay(job.original_time), 'center');
+    push('', 'rule');
+    for (const l of c.lines || []) { push((l.level === 'out' ? 'MBAROI: ' : 'PAK: ') + l.name, 'bold', '  '); push('  Ka: ' + l.text, undefined, '  '); }
+    push('', 'rule');
+    push('#' + job.id, 'center');
+    return out;
+  }
+  // What to buy: everything under its level, how much is left and how many packs bring it back to full.
+  if (job.kind === 'stock_list') {
+    push(c.cafe || 'Cafe', 'center');
+    push(hhmmDay(job.original_time), 'center');
+    push('', 'rule');
+    if (!(c.lines || []).length) push('Asgje per te blere', 'center');
+    for (const l of c.lines || []) { push(`[ ] ${l.buy_text}  ${l.name}`, 'bold', '    '); push('    Ka: ' + l.text, undefined, '    '); }
+    push('', 'rule');
     push('#' + job.id, 'center');
     return out;
   }

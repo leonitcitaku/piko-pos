@@ -5,6 +5,7 @@ import { t, setLang, getLang } from './i18n.js';
 import { UiProvider, PinPad, useUi, ErrorBoundary, useKeys, typingIn, modalsOpen, hasKeyboard } from './ui.jsx';
 import { Floor } from './Floor.jsx';
 import { Manager } from './Manager.jsx';
+import { StockPage, StockBanner } from './Stock.jsx';
 import { errText, isPc } from './util.js';
 
 function Setup({ onDone }) {
@@ -146,7 +147,9 @@ function CashStrip({ onDay }) {
 
 function Shell({ user, setUser, cafe }) {
   const boss = user.role === 'manager' || user.role === 'owner';
-  const [view, setView] = useState('floor');
+  const shelf = boss || user.role === 'bartender';
+  // A click on the Windows stock notification opens the till on the stock screen.
+  const [view, setView] = useState(() => (shelf && new URLSearchParams(window.location.search).get('stock') ? 'stock' : 'floor'));
   const [info, setInfo] = useState(null);
   const { toast } = useUi();
   const loadInfo = useCallback(() => get('/api/system/info').then(setInfo).catch(() => {}), []);
@@ -173,7 +176,7 @@ function Shell({ user, setUser, cafe }) {
     // Esc walks back one step at a time. From My session or Manager the step back is the tables screen,
     // which is home; the tables screen itself decides when Esc means log out.
     if (e.key === 'Escape' && view !== 'floor' && !modalsOpen() && !typingIn(e)) { e.preventDefault(); setView('floor'); return; }
-    if (e.altKey && !e.ctrlKey && boss && ['1', '2', '3'].includes(e.key)) { e.preventDefault(); setView({ 1: 'floor', 2: 'me', 3: 'manager' }[e.key]); }
+    if (e.altKey && !e.ctrlKey && boss && ['1', '2', '3', '4'].includes(e.key)) { e.preventDefault(); setView({ 1: 'floor', 2: 'me', 3: 'manager', 4: 'stock' }[e.key]); }
   });
   const switchLang = async () => {
     const next = getLang() === 'sq' ? 'en' : 'sq';
@@ -185,8 +188,9 @@ function Shell({ user, setUser, cafe }) {
       <header className="bar">
         <strong className="brand">{cafe}</strong>
         <nav>
-          {boss && <button className={view === 'floor' ? 'on' : ''} onClick={() => setView('floor')}>{t('Tables')}</button>}
+          {shelf && <button className={view === 'floor' ? 'on' : ''} onClick={() => setView('floor')}>{t('Tables')}</button>}
           {boss && <button className={view === 'me' ? 'on' : ''} onClick={() => setView('me')}>{t('My session')}</button>}
+          {shelf && <button className={view === 'stock' ? 'on' : ''} onClick={() => setView('stock')}>{t('Stock')}</button>}
           {boss && <button className={view === 'manager' ? 'on' : ''} onClick={() => setView('manager')}>{t('Manager')}</button>}
         </nav>
         <div className="bar-end">
@@ -200,10 +204,12 @@ function Shell({ user, setUser, cafe }) {
       {info && !info.day_open && <div className="banner">{t('No business day is open. A manager has to open the day.')}</div>}
       {info?.catch_up && <div className="banner warn">{t('Catch up mode is on: orders are recorded without printing.')}</div>}
       {info && !info.printer.ok && info.printer.mode !== 'off' && <div className="banner bad">{t('Printer')}: {info.printer.error}</div>}
+      <StockBanner app={app} onOpen={() => setView('stock')} />
       <main className="main">
         {view === 'floor' && <Floor app={app} />}
         {view === 'me' && boss && <MySession user={user} />}
         {view === 'manager' && boss && <Manager app={app} />}
+        {view === 'stock' && shelf && <div className="page"><StockPage app={app} /></div>}
       </main>
     </div>
   );

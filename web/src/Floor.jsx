@@ -233,9 +233,9 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
   };
 
   const afterChange = (o) => { if (o.closed || o.status !== 'open') { toast(t('Table closed')); reload(); onClose(); } else { setOrder(o); reload(); } };
-  const cancelItem = async (it, reason, qty = it.qty) => {
+  const cancelItem = async (it, reason, qty = it.qty, restock) => {
     try {
-      const o = await withApproval(ui, (pin) => post(`/api/orders/${order.id}/cancel-item`, { item_id: it.id, qty, reason, pin }));
+      const o = await withApproval(ui, (pin) => post(`/api/orders/${order.id}/cancel-item`, { item_id: it.id, qty, reason, pin, ...(restock == null ? {} : { restock }) }));
       if (o) { setDlg(null); afterChange(o); }
     } catch (e) {
       if (e.code === 'reason_required') setDlg({ type: 'reason', item: it, qty });
@@ -291,7 +291,9 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
         {found && !found.length && <p className="muted pad">{t('Nothing found')}</p>}
         <div className="products" ref={gridRef}>
           {shown.map((p, i) => (
-            <button key={p.id} className={'product' + (p.available ? '' : ' out') + (i === cur ? ' hit' : '')} onClick={() => { add(p); setFind(''); }} disabled={!p.available}>
+            <button key={p.id} className={'product' + (p.available ? '' : ' out') + (i === cur ? ' hit' : '') + (p.stock_state ? ' st-' + p.stock_state : '')} onClick={() => { add(p); setFind(''); }} disabled={!p.available}
+              title={p.stock_state === 'out' ? t('Out of stock') : p.stock_state === 'low' ? t('Low stock') : undefined}>
+              {p.stock_state && <i className="stockdot" aria-label={t(p.stock_state === 'out' ? 'Out of stock' : 'Low stock')} />}
               <b>{p.name}</b><span>{p.available ? money(p.price_cents) : t('Sold out')}</span>
             </button>
           ))}
@@ -355,7 +357,9 @@ function OrderPane({ app, table, menu, tables, onClose, onGo, reload }) {
       )}
       {dlg?.type === 'reason' && (
         <Modal title={t('Why is it cancelled?')} onClose={() => setDlg(null)}>
-          <div className="stack">{['mistake', 'spilled', 'customer left', 'other'].map((r) => <button key={r} className="btn big" onClick={() => cancelItem(dlg.item, r, dlg.qty)}>{t(r)}</button>)}</div>
+          {/* Made and thrown away is the usual case after the free window. If it never left the bar, it goes back. */}
+          {dlg.item.stock && <label className="row restock"><input type="checkbox" checked={!!dlg.restock} onChange={(e) => setDlg({ ...dlg, restock: e.target.checked })} /> {t('It was not made: put it back in stock')}</label>}
+          <div className="stack">{['mistake', 'spilled', 'customer left', 'other'].map((r) => <button key={r} className="btn big" onClick={() => cancelItem(dlg.item, r, dlg.qty, dlg.item.stock ? !!dlg.restock : undefined)}>{t(r)}</button>)}</div>
         </Modal>
       )}
 

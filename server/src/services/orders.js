@@ -6,6 +6,7 @@ import { broadcast } from './events.js';
 import { enqueueTicket } from '../print/queue.js';
 import { approve } from '../auth.js';
 import { fiscalOrderPaid } from '../fiscal/index.js';
+import * as stock from './stock.js';
 
 // Refuse to record anything if the PC clock has jumped backwards (dead battery after a power cut).
 export function guardClock() {
@@ -143,6 +144,8 @@ export function addItems(ctx, orderId, body) {
       const r = run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, batch_id, sent_by, sent_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?)`, orderId, p.id, p.name, price, p.vat_rate, qty, JSON.stringify(mods), note, batchId, ctx.user.id, t);
       made.push({ id: Number(r.lastInsertRowid), qty, name: p.name, modifiers: mods, note });
+      // Catch-up entries are real sales too, so they use stock like any other.
+      stock.consumeForLine(ctx, Number(r.lastInsertRowid), p.id, mods.map((m) => m.id), qty);
     }
     run('INSERT INTO batches(id, order_id, created_at) VALUES(?,?,?)', batchId, orderId, t);
     ensureSession(ctx.user.id);
@@ -184,10 +187,14 @@ export function cancelItem(ctx, orderId, body) {
     let voidId = it.id;
     if (qty < it.qty) {
       run('UPDATE order_items SET qty = ? WHERE id = ?', it.qty - qty, it.id);
-      voidId = Number(run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, discount_pct, status, batch_id, sent_by, sent_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, orderId, it.product_id, it.name, it.price_cents, it.vat_rate, qty, it.modifiers, it.note, it.discount_pct, 'sent', it.batch_id, it.sent_by, it.sent_at).lastInsertRowid);
+      voidId = Number(run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, discount_pct, status, batch_id, sent_by, sent_at, stock, cost_cents)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, orderId, it.product_id, it.name, it.price_cents, it.vat_rate, qty, it.modifiers, it.note, it.discount_pct, 'sent', it.batch_id, it.sent_by, it.sent_at, it.stock, it.cost_cents).lastInsertRowid);
     }
     run("UPDATE order_items SET status = 'void', void_reason = ?, void_by = ?, voided_at = ? WHERE id = ?", reason, approver?.id ?? ctx.user.id, now(), voidId);
+    // A mistake caught in time never left the bar: it goes back on the shelf. After that it was most likely made,
+    // so it counts as thrown away, unless whoever approves the cancel says it goes back.
+    const restock = body.restock == null ? quick : !!body.restock;
+    stock.cancelLine(ctx, { ...it, id: voidId }, qty, restock ? 'return' : 'waste');
     audit(ctx, quick ? 'quick_cancel' : 'void', orderId, { item: it.name, qty, of: it.qty, reason, approved_by: approver?.id ?? null });
     const day = requireDay();
     if (!day.catch_up) {
@@ -316,9 +323,9 @@ export function pay(ctx, orderId, body) {
       if (qty === row.qty) run('UPDATE order_items SET payment_id = ? WHERE id = ?', paymentId, row.id);
       else {
         run('UPDATE order_items SET qty = ? WHERE id = ?', row.qty - qty, row.id);
-        run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, discount_pct, status, batch_id, sent_by, sent_at, payment_id)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, orderId, row.product_id, row.name, row.price_cents, row.vat_rate, qty, row.modifiers, row.note,
-          row.discount_pct, 'sent', row.batch_id, row.sent_by, row.sent_at, paymentId);
+        run(`INSERT INTO order_items(order_id, product_id, name, price_cents, vat_rate, qty, modifiers, note, discount_pct, status, batch_id, sent_by, sent_at, payment_id, stock, cost_cents)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, orderId, row.product_id, row.name, row.price_cents, row.vat_rate, qty, row.modifiers, row.note,
+          row.discount_pct, 'sent', row.batch_id, row.sent_by, row.sent_at, paymentId, row.stock, row.cost_cents);
       }
     }
     if (type === 'house') audit(ctx, 'on_the_house', orderId, { amount_cents: amount, approved_by: approver.id });

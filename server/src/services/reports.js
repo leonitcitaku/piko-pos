@@ -53,6 +53,47 @@ export function dayReport(dayId) {
     tickets: { printed: jobs.filter((j) => j.status === 'printed').length, late: jobs.filter((j) => j.was_late).length,
       reprints: jobs.filter(isCopy).length, skipped: jobs.filter((j) => j.status === 'skipped').length },
     catch_up_orders: get('SELECT COUNT(*) AS n FROM orders WHERE day_id = ? AND entered_late = 1', day.id).n,
+    stock: stockReport(from, to + 1),
+  };
+}
+
+// ---------------------------------------------------------------- stock: what was used, what it cost, what was lost
+// Cost of a line is what its stock cost when it was sent (order_items.cost_cents), so a later price never rewrites
+// an old day. A line sold before any delivery had a price has no cost, and is counted as such instead of as zero.
+export function stockReport(from, to) {
+  const paid = all(`SELECT i.name, i.qty, i.price_cents, i.discount_pct, i.cost_cents, i.stock, p.type FROM order_items i JOIN payments p ON p.id = i.payment_id
+    WHERE i.status = 'sent' AND p.created_at >= ? AND p.created_at < ?`, from, to);
+  const by = new Map();
+  let revenue = 0, cost = 0, houseCost = 0, noCost = 0;
+  for (const i of paid) {
+    if (!i.stock) continue;                        // not tracked
+    const e = by.get(i.name) || { name: i.name, qty: 0, sales_cents: 0, cost_cents: 0, no_cost_qty: 0, house_qty: 0 };
+    const c = i.cost_cents == null ? null : i.cost_cents * i.qty;
+    if (i.type === 'house') { e.house_qty += i.qty; if (c != null) houseCost += c; }
+    else {
+      e.qty += i.qty;
+      if (c == null) { e.no_cost_qty += i.qty; noCost += i.qty; }
+      else { const sale = lineTotal(i); e.sales_cents += sale; e.cost_cents += c; revenue += sale; cost += c; }
+    }
+    by.set(i.name, e);
+  }
+  const products = [...by.values()].map((e) => ({ ...e, profit_cents: e.sales_cents - e.cost_cents })).sort((a, b) => b.profit_cents - a.profit_cents);
+  const madeAndThrown = get(`SELECT COALESCE(SUM(cost_cents * qty), 0) AS v, COALESCE(SUM(qty), 0) AS n FROM order_items
+    WHERE status = 'void' AND void_stock = 'waste' AND voided_at >= ? AND voided_at < ?`, from, to);
+  const moveSum = (kind) => get('SELECT COALESCE(SUM(cost_cents), 0) AS v, COUNT(*) AS n FROM stock_moves WHERE kind = ? AND at >= ? AND at < ?', kind, from, to);
+  const shelfWaste = moveSum('waste'), counts = moveSum('count');
+  const items = all(`SELECT s.id, s.name, s.unit, s.pack_name, s.pack_size,
+      COALESCE(SUM(CASE WHEN m.kind = 'sale' THEN -m.delta WHEN m.kind = 'return' THEN -m.delta ELSE 0 END), 0) AS used,
+      COALESCE(SUM(CASE WHEN m.kind = 'delivery' THEN m.delta ELSE 0 END), 0) AS delivered,
+      COALESCE(SUM(CASE WHEN m.kind = 'waste' THEN -m.delta ELSE 0 END), 0) AS wasted,
+      COALESCE(SUM(CASE WHEN m.kind = 'count' THEN m.delta ELSE 0 END), 0) AS counted_diff,
+      COALESCE(SUM(CASE WHEN m.kind = 'delivery' THEN m.cost_cents ELSE 0 END), 0) AS bought_cents
+    FROM stock_items s JOIN stock_moves m ON m.stock_item_id = s.id AND m.at >= ? AND m.at < ? GROUP BY s.id ORDER BY s.sort, s.name`, from, to);
+  return {
+    totals: { revenue_cents: revenue, cost_cents: cost, profit_cents: revenue - cost, house_cost_cents: houseCost, no_cost_qty: noCost,
+      waste_cents: madeAndThrown.v + shelfWaste.v, waste_made_qty: madeAndThrown.n, count_diff_cents: counts.v,
+      bought_cents: items.reduce((x, i) => x + i.bought_cents, 0) },
+    products, items,
   };
 }
 
@@ -74,6 +115,7 @@ export function dayReportCsv(dayId) {
   add(); add('Voids', 'By', 'Item', 'Qty', 'Reason', 'Approved by'); for (const v of r.voids) add(dt(v.at), v.user_name, v.item, v.qty, v.reason, v.approved_by_name || '');
   add(); add('On the house', 'By', 'Amount', 'Approved by'); for (const v of r.comps) add(dt(v.at), v.user_name, eur(v.amount_cents), v.approved_by_name || '');
   add(); add('Payouts', 'Amount', 'Reason', 'From', 'Approved by'); for (const p of r.payouts) add(dt(p.created_at), eur(p.amount_cents), p.reason, p.user_name || 'house', p.approved_by_name || '');
+  stockCsv(add, r.stock);
   return '﻿' + rows.join('\r\n') + '\r\n';
 }
 
@@ -120,8 +162,20 @@ export function rangeReport(from, to) {
     by_category: items("COALESCE(c.name, '?')").sort((a, b) => b.cents - a.cents), by_item: items('i.name').sort((a, b) => b.qty - a.qty).slice(0, 200),
     by_staff: all(`SELECT u.name AS key, SUM(CASE WHEN p.type = 'cash' THEN p.amount_cents ELSE 0 END) AS cash, SUM(p.amount_cents) AS cents, COUNT(DISTINCT p.order_id) AS qty
       FROM payments p JOIN users u ON u.id = p.user_id WHERE p.created_at >= ? AND p.created_at < ? GROUP BY u.id ORDER BY cents DESC`, from, to),
-    payouts,
+    payouts, stock: stockReport(from, to),
   };
+}
+
+function stockCsv(add, st) {
+  if (!st || (!st.products.length && !st.items.length)) return;
+  const t = st.totals;
+  add(); add('Stock sales (tracked)', eur(t.revenue_cents)); add('Cost of goods', eur(t.cost_cents)); add('Gross profit', eur(t.profit_cents));
+  add('On the house cost', eur(t.house_cost_cents)); add('Waste', eur(t.waste_cents)); add('Count differences', eur(t.count_diff_cents));
+  add('Bought', eur(t.bought_cents)); if (t.no_cost_qty) add('Sold without a cost', t.no_cost_qty);
+  add(); add('Product', 'Qty', 'Sales', 'Cost', 'Profit', 'On the house', 'No cost');
+  for (const p of st.products) add(p.name, p.qty, eur(p.sales_cents), eur(p.cost_cents), eur(p.profit_cents), p.house_qty, p.no_cost_qty);
+  add(); add('Stock item', 'Used', 'Delivered', 'Wasted', 'Count difference', 'Unit');
+  for (const i of st.items) add(i.name, i.used, i.delivered, i.wasted, i.counted_diff, i.unit);
 }
 
 export function rangeReportCsv(from, to) {
@@ -137,6 +191,7 @@ export function rangeReportCsv(from, to) {
   add(); add('Category', 'Qty', 'Amount'); for (const x of r.by_category) add(x.key, x.qty, eur(x.cents));
   add(); add('Item', 'Qty', 'Amount'); for (const x of r.by_item) add(x.key, x.qty, eur(x.cents));
   add(); add('Payout', 'Amount', 'Reason', 'From', 'Approved by'); for (const p of r.payouts) add(new Date(p.created_at).toLocaleString('sv-SE'), eur(p.amount_cents), p.reason, p.user_name || 'house', p.approved_by_name || '');
+  stockCsv(add, r.stock);
   return '﻿' + rows.join('\r\n') + '\r\n';
 }
 

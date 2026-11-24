@@ -287,3 +287,12 @@ kbd { font: 600 .78rem/1 ui-monospace, Menlo, Consolas, monospace; padding: 3px 
 .keep-address { margin: 14px 0; }
 .floor-view { display: flex; width: 100%; margin-bottom: 10px; } .floor-view button { flex: 1; }
 .tile.kb, .plan-table.kb { outline: 4px solid var(--amber); outline-offset: -4px; }
+
+/* stock */
+.stockbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.stockbar .chip { background: rgba(255,255,255,.85); color: #1c1600; }
+.product { position: relative; }
+.product .stockdot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--amber); }
+.product.st-out .stockdot { background: var(--brick); }
+.restock { margin-bottom: 10px; font-weight: 600; }
+.stock .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }

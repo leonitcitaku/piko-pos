@@ -106,5 +106,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.log(`On this PC:   http://localhost${s.port === 80 ? '' : ':' + s.port}`);
     for (const u of s.urls) console.log(`On the Wi-Fi: ${u}`);
     if (process.send) process.send({ type: 'ready', port: s.port, urls: s.urls });
-  }).catch((e) => { console.error('Could not start:', e); process.exit(1); });
+  }).catch((e) => {
+    console.error('Could not start:', e);
+    // The desktop app shows this one to the owner instead of restarting the server again and again.
+    if (process.send && e.code === 'db_newer') { process.send({ type: 'fatal', code: e.code, message: e.message }); setTimeout(() => process.exit(1), 200); return; }
+    process.exit(1);
+  });
 }

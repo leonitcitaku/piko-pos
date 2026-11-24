@@ -38,7 +38,7 @@ export const dateTime = (ms) => { if (!ms) return ''; const d = new Date(ms); re
 
 // Live updates. One connection for the whole app, however many parts of the screen are listening.
 // It reconnects by itself; on every reconnect the screens reload their data so nothing is missed.
-const TYPES = ['hello', 'tables', 'menu', 'day', 'printer', 'tickets', 'ticket_failed'];
+const TYPES = ['hello', 'tables', 'menu', 'day', 'printer', 'tickets', 'ticket_failed', 'stock'];
 const listeners = new Set();
 let source = null;
 function connect() {

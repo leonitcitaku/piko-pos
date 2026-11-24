@@ -93,7 +93,48 @@ const MIGRATIONS = [
   );
   CREATE INDEX plan_zone ON plan_items(zone_id);
   `,
+  // 4: stock. What the cafe buys and counts (coffee by the kg, counted in shots), what each product and extra
+  // uses of it, every change with who and why, and the warnings. Amounts are whole units: shots, filters, cans.
+  `
+  CREATE TABLE stock_items (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'copë',
+    pack_name TEXT NOT NULL DEFAULT 'pako', pack_size INTEGER NOT NULL DEFAULT 1 CHECK (pack_size >= 1),
+    qty INTEGER NOT NULL DEFAULT 0, low_level INTEGER NOT NULL DEFAULT 0, full_level INTEGER NOT NULL DEFAULT 0,
+    avg_cost_cents_per_pack INTEGER, state TEXT NOT NULL DEFAULT 'ok', counted_at INTEGER,
+    sort INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE TABLE recipe_lines (
+    id INTEGER PRIMARY KEY, product_id INTEGER REFERENCES products(id), modifier_id INTEGER REFERENCES modifiers(id),
+    stock_item_id INTEGER NOT NULL REFERENCES stock_items(id), amount INTEGER NOT NULL CHECK (amount >= 1),
+    CHECK ((product_id IS NULL) <> (modifier_id IS NULL))
+  );
+  CREATE UNIQUE INDEX recipe_product ON recipe_lines(product_id, stock_item_id) WHERE product_id IS NOT NULL;
+  CREATE UNIQUE INDEX recipe_modifier ON recipe_lines(modifier_id, stock_item_id) WHERE modifier_id IS NOT NULL;
+  CREATE TABLE stock_moves (
+    id INTEGER PRIMARY KEY, stock_item_id INTEGER NOT NULL REFERENCES stock_items(id), kind TEXT NOT NULL,
+    delta INTEGER NOT NULL, qty_after INTEGER NOT NULL, cost_cents INTEGER, order_item_id INTEGER, day_id INTEGER,
+    user_id INTEGER, reason TEXT, note TEXT, corrects INTEGER, at INTEGER NOT NULL
+  );
+  CREATE INDEX moves_item ON stock_moves(stock_item_id, at);
+  CREATE INDEX moves_at ON stock_moves(at);
+  CREATE TABLE stock_alerts (
+    id INTEGER PRIMARY KEY, stock_item_id INTEGER NOT NULL REFERENCES stock_items(id), level TEXT NOT NULL,
+    qty_at INTEGER NOT NULL, at INTEGER NOT NULL, seen_by INTEGER, seen_at INTEGER, cleared_at INTEGER
+  );
+  ALTER TABLE order_items ADD COLUMN stock TEXT;
+  ALTER TABLE order_items ADD COLUMN cost_cents INTEGER;
+  ALTER TABLE order_items ADD COLUMN void_stock TEXT;
+  `,
 ];
+
+export const SCHEMA_VERSION = MIGRATIONS.length;
+
+export class DbNewerError extends Error {
+  constructor(found) {
+    super(`This data was made by a newer Cafe POS (data version ${found}, this app knows ${SCHEMA_VERSION}). Install that version or a newer one. Nothing was changed.`);
+    this.code = 'db_newer'; this.found = found;
+  }
+}
 
 export function openDb(dir) {
   dataDir = dir;
@@ -101,6 +142,10 @@ export function openDb(dir) {
   db = new DatabaseSync(path.join(dir, 'pos.db'));
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   const v = db.prepare('PRAGMA user_version').get().user_version;
+  // An older app on newer data would run against tables it does not know. Stop before touching anything.
+  if (v > SCHEMA_VERSION) { db.close(); db = null; throw new DbNewerError(v); }
+  // An update is about to change the tables: keep a copy of the data exactly as the old version left it.
+  if (v > 0 && v < SCHEMA_VERSION) backupBeforeUpdate(dir, v);
   for (let i = v; i < MIGRATIONS.length; i++) {
     db.exec('BEGIN');
     try { db.exec(MIGRATIONS[i]); db.exec(`PRAGMA user_version = ${i + 1}`); db.exec('COMMIT'); }
@@ -111,6 +156,16 @@ export function openDb(dir) {
 }
 
 export function closeDb() { if (db) { db.close(); db = null; } }
+
+// Same folder and name pattern as the other backups, so it shows in the System tab and can be restored from there.
+function backupBeforeUpdate(dir, fromVersion) {
+  const bdir = path.join(dir, 'backups');
+  fs.mkdirSync(bdir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  let file = path.join(bdir, `pos-${stamp}-before-update-v${fromVersion}.db`);
+  for (let n = 2; fs.existsSync(file); n++) file = path.join(bdir, `pos-${stamp}-before-update-v${fromVersion}-${n}.db`);
+  db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+}
 
 const cache = new Map();
 function stmt(sql) {

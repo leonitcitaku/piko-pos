@@ -5,8 +5,9 @@ import { Modal, useUi, Field } from './ui.jsx';
 import { errText } from './util.js';
 import { RangeReport, StaffProfiles } from './Insights.jsx';
 import { PrinterFinder, Backups, QrPrint } from './SystemExtras.jsx';
+import { StockPage, RecipeCell, RecipeEditor, useStockData, StockSection } from './Stock.jsx';
 
-const TABS = ['Day', 'Tickets', 'Report', 'Menu', 'Staff', 'Tables', 'Settings', 'System', 'Log'];
+const TABS = ['Day', 'Tickets', 'Report', 'Menu', 'Stock', 'Staff', 'Tables', 'Settings', 'System', 'Log'];
 
 export function Manager({ app }) {
   const [tab, setTab] = useState('Day');
@@ -18,6 +19,7 @@ export function Manager({ app }) {
         {tab === 'Tickets' && <TicketsTab app={app} />}
         {tab === 'Report' && <ReportTab />}
         {tab === 'Menu' && <MenuTab app={app} />}
+        {tab === 'Stock' && <StockPage app={app} />}
         {tab === 'Staff' && <StaffTab app={app} />}
         {tab === 'Tables' && <TablesTab app={app} />}
         {tab === 'Settings' && <SettingsTab app={app} />}
@@ -221,6 +223,7 @@ function DayReport() {
           {r.comps.length > 0 && <><h2>{t('On the house')}</h2><table className="grid"><tbody>{r.comps.map((v, i) => <tr key={i}><td>{clock(v.at)}</td><td>{v.user_name}</td><td className="r"><Money c={v.amount_cents} /></td><td>{t('Approved by')}: {v.approved_by_name}</td></tr>)}</tbody></table></>}
           {r.discounts.length > 0 && <><h2>{t('Discount')}</h2><table className="grid"><tbody>{r.discounts.map((v, i) => <tr key={i}><td>{clock(v.at)}</td><td>{v.user_name}</td><td>{v.pct}%</td><td>{t('Approved by')}: {v.approved_by_name}</td></tr>)}</tbody></table></>}
           {r.payouts.length > 0 && <><h2>{t('Payouts today')}</h2><table className="grid"><tbody>{r.payouts.map((p) => <tr key={p.id}><td>{clock(p.created_at)}</td><td>{p.reason}</td><td>{p.user_name || t('House cash')}</td><td className="r"><Money c={p.amount_cents} /></td></tr>)}</tbody></table></>}
+          <StockSection s={r.stock} />
           <dl className="facts">
             <div><dt>{t('Quick cancels')}</dt><dd>{r.quick_cancels.map((q) => `${q.user_name}: ${q.count}`).join(', ') || '0'}</dd></div>
             <div><dt>{t('Late tickets')}</dt><dd>{r.tickets.late}</dd></div>
@@ -243,11 +246,16 @@ function MenuTab({ app }) {
   const act = useAct();
   const owner = app.user.role === 'owner';
   const [add, setAdd] = useState(null);
+  const [stock, loadStock] = useStockData();
+  const [recipe, setRecipe] = useState(null);
+  const [untracked, setUntracked] = useState(false);
   if (!d) return <p className="muted">{t('Loading')}</p>;
   const save = async (entity, id, patch) => { if (await act(() => put(`/api/admin/${entity}/${id}`, patch))) load(); else load(); };
+  const tracked = (pid) => !stock || stock.recipes.some((r) => r.product_id === pid);
   return (
     <>
       {!owner && <p className="notice">{t('Only the owner can change prices.')}</p>}
+      {stock && stock.items.length > 0 && <label className="row noprint"><input type="checkbox" checked={untracked} onChange={(e) => setUntracked(e.target.checked)} /> {t('Show only products that use no stock')}</label>}
       {d.categories.map((c) => (
         <section key={c.id} className={c.active ? '' : 'dim'}>
           <div className="row between">
@@ -255,12 +263,13 @@ function MenuTab({ app }) {
             <div className="row"><Toggle label={t('Active')} on={!!c.active} onChange={(v) => save('categories', c.id, { active: v })} />
               {owner && <button className="btn" onClick={() => setAdd({ type: 'product', category_id: c.id, name: '', price: '' })}>{t('Add product')}</button>}</div>
           </div>
-          <table className="grid"><thead><tr><th>{t('Name')}</th><th className="r">{t('Price')}</th><th className="r">{t('VAT %')}</th><th>{t('Available')}</th><th>{t('Active')}</th></tr></thead>
-            <tbody>{d.products.filter((p) => p.category_id === c.id).map((p) => (
+          <table className="grid"><thead><tr><th>{t('Name')}</th><th className="r">{t('Price')}</th><th className="r">{t('VAT %')}</th><th>{t('Stock use')}</th><th>{t('Available')}</th><th>{t('Active')}</th></tr></thead>
+            <tbody>{d.products.filter((p) => p.category_id === c.id && (!untracked || !tracked(p.id))).map((p) => (
               <tr key={p.id} className={p.active ? '' : 'dim'}>
                 <td><Inline value={p.name} onSave={(name) => save('products', p.id, { name })} /></td>
                 <td className="r"><Inline value={(p.price_cents / 100).toFixed(2)} disabled={!owner} numeric onSave={(v) => Number.isFinite(toCents(v)) && save('products', p.id, { price_cents: toCents(v) })} /></td>
                 <td className="r"><Inline value={String(p.vat_rate)} disabled={!owner} numeric onSave={(v) => save('products', p.id, { vat_rate: Number(v) })} /></td>
+                <td><RecipeCell stock={stock} owner="product" id={p.id} onEdit={() => setRecipe({ owner: 'product', target: p })} /></td>
                 <td><Toggle on={!!p.available} onChange={(v) => act(() => post(`/api/products/${p.id}/available`, { available: v })).then(load)} /></td>
                 <td><Toggle on={!!p.active} onChange={(v) => save('products', p.id, { active: v })} /></td>
               </tr>
@@ -269,14 +278,16 @@ function MenuTab({ app }) {
       ))}
       <div className="row"><button className="btn" onClick={() => setAdd({ type: 'category', name: '' })}>{t('Add category')}</button></div>
       <h2>{t('Extras')}</h2>
-      <table className="grid"><thead><tr><th>{t('Name')}</th><th className="r">{t('Price')}</th><th>{t('Category')}</th><th>{t('Active')}</th></tr></thead>
+      <table className="grid"><thead><tr><th>{t('Name')}</th><th className="r">{t('Price')}</th><th>{t('Category')}</th><th>{t('Stock use')}</th><th>{t('Active')}</th></tr></thead>
         <tbody>{d.modifiers.map((m) => (
           <tr key={m.id}><td><Inline value={m.name} onSave={(name) => save('modifiers', m.id, { name })} /></td>
             <td className="r"><Inline value={(m.price_cents / 100).toFixed(2)} disabled={!owner} numeric onSave={(v) => Number.isFinite(toCents(v)) && save('modifiers', m.id, { price_cents: toCents(v) })} /></td>
             <td>{d.categories.find((c) => c.id === m.category_id)?.name || '–'}</td>
+            <td><RecipeCell stock={stock} owner="modifier" id={m.id} onEdit={() => setRecipe({ owner: 'modifier', target: m })} /></td>
             <td><Toggle on={!!m.active} onChange={(v) => save('modifiers', m.id, { active: v })} /></td></tr>
         ))}</tbody></table>
       {owner && <div className="row"><button className="btn" onClick={() => setAdd({ type: 'modifier', name: '', price: '0', category_id: '' })}>{t('Add extra')}</button></div>}
+      {recipe && stock && <RecipeEditor stock={stock} owner={recipe.owner} target={recipe.target} onClose={() => setRecipe(null)} onSaved={() => { setRecipe(null); loadStock(); }} />}
 
       {add && (
         <Modal title={t(add.type === 'product' ? 'Add product' : add.type === 'category' ? 'Add category' : 'Add extra')} onClose={() => setAdd(null)}>
@@ -389,6 +400,11 @@ function SettingsTab({ app }) {
       <div className="row"><button className="btn primary" onClick={() => save(['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width'])}>{t('Save')}</button>
         <button className="btn" onClick={() => act(() => post('/api/system/test-print'), t('Ticket sent to the printer'))}>{t('Test print')}</button></div>
       <PrinterFinder current={f} onPick={async (patch) => { const next = { ...f, ...patch }; setF(next); if (await act(() => put('/api/admin/settings', { printer_mode: next.printer_mode, printer_host: next.printer_host || '', printer_port: next.printer_port || '9100', printer_name: next.printer_name || '' }), t('Saved'))) { load(); app.reloadInfo(); } }} />
+      <h2>{t('Stock warnings')}</h2>
+      <div className="stack">
+        <Toggle label={t('Print a slip on the bar printer when stock runs low')} on={(f.stock_print_alerts ?? '1') === '1'} onChange={async (v) => { if (await act(() => put('/api/admin/settings', { stock_print_alerts: v ? '1' : '0' }), t('Saved'))) load(); }} />
+        <Toggle label={t('Show a Windows notification on this PC')} on={(f.stock_notify ?? '1') === '1'} onChange={async (v) => { if (await act(() => put('/api/admin/settings', { stock_notify: v ? '1' : '0' }), t('Saved'))) load(); }} />
+      </div>
       <h2>{t('Fiscal')}</h2>
       <p className="notice">{t('Off. No fiscal driver is installed yet.')}</p>
       {owner && (

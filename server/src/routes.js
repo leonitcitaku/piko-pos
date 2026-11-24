@@ -13,6 +13,8 @@ import { listPrinters } from './util/printers.js';
 import fs from 'node:fs';
 import { listTickets, reprint, skip, enqueueTicket, printerState, pump } from './print/queue.js';
 import { qrSvg } from './util/qr.js';
+import { registerStockRoutes } from './stockRoutes.js';
+import * as stock from './services/stock.js';
 
 const STAFF = ['waiter', 'bartender', 'manager', 'owner'];
 const BOSS = ['manager', 'owner'];
@@ -56,11 +58,15 @@ export function registerRoutes(r, cfg) {
   });
 
   // ---------- menu and tables ----------
-  r.get('/api/menu', { roles: STAFF }, () => ({
-    categories: all('SELECT id, name FROM categories WHERE active = 1 ORDER BY sort, id'),
-    products: all('SELECT id, category_id, name, price_cents, available FROM products WHERE active = 1 ORDER BY sort, id'),
-    modifiers: all('SELECT id, name, price_cents, category_id FROM modifiers WHERE active = 1 ORDER BY id'),
-  }));
+  r.get('/api/menu', { roles: STAFF }, () => {
+    // stock_state marks a product whose stock is low or gone. It is only a warning: the product still sells.
+    const states = stock.productStates();
+    return {
+      categories: all('SELECT id, name FROM categories WHERE active = 1 ORDER BY sort, id'),
+      products: all('SELECT id, category_id, name, price_cents, available FROM products WHERE active = 1 ORDER BY sort, id').map((p) => ({ ...p, stock_state: states.get(p.id) || null })),
+      modifiers: all('SELECT id, name, price_cents, category_id FROM modifiers WHERE active = 1 ORDER BY id'),
+    };
+  });
   r.get('/api/tables', { roles: STAFF }, () => orders.tablesView());
   r.post('/api/products/:id/available', { roles: ['bartender', 'manager', 'owner'] }, (c) => {
     run('UPDATE products SET available = ? WHERE id = ?', c.body.available ? 1 : 0, int(c.params.id, 'id'));
@@ -176,7 +182,7 @@ export function registerRoutes(r, cfg) {
     return { id: Number(res.lastInsertRowid) };
   });
   r.put('/api/admin/settings', { roles: BOSS }, (c) => {
-    const managerKeys = ['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width'];
+    const managerKeys = ['printer_mode', 'printer_host', 'printer_port', 'printer_share', 'printer_name', 'ticket_width', 'stock_print_alerts', 'stock_notify'];
     const ownerKeys = [...managerKeys, 'cafe_name', 'cancel_window_sec', 'backup_dir', 'idle_lock_sec', 'fiscal_mode', 'backups_keep', 'login_idle_days', 'late_after_sec'];
     const ranges = { cancel_window_sec: [0, 3600], idle_lock_sec: [10, 3600], backups_keep: [5, 365], login_idle_days: [1, 365], late_after_sec: [10, 3600] };
     const allowed = c.user.role === 'owner' ? ownerKeys : managerKeys;
@@ -185,6 +191,7 @@ export function registerRoutes(r, cfg) {
       if (k === 'fiscal_mode' && v !== 'off') throw bad('fiscal_not_ready', 'No fiscal driver is installed yet');
       if (k === 'printer_mode' && !['off', 'network', 'windows', 'winraw', 'file'].includes(v)) throw bad('bad_value', k);
       if (k === 'ticket_width' && !['32', '42', '48'].includes(String(v))) throw bad('bad_value', k);
+      if ((k === 'stock_print_alerts' || k === 'stock_notify') && !['0', '1'].includes(String(v))) throw bad('bad_value', k);
       if (ranges[k]) { const n = Number(v); if (!Number.isInteger(n) || n < ranges[k][0] || n > ranges[k][1]) throw bad('bad_value', `${k} must be between ${ranges[k][0]} and ${ranges[k][1]}`); }
       setSetting(k, String(v).slice(0, 200));
     }
@@ -244,9 +251,10 @@ export function registerRoutes(r, cfg) {
       for (const t of ['order_items', 'payments', 'batches', 'orders', 'cash_movements', 'print_jobs', 'sessions', 'business_days', 'audit_log']) run(`DELETE FROM ${t}`);
       run("DELETE FROM settings WHERE key = 'last_event_at'");
       run('UPDATE products SET available = 1');
+      stock.resetStock();
     });
     audit(c, 'reset_test_data');
-    broadcast('day'); broadcast('tables');
+    broadcast('day'); broadcast('tables'); broadcast('menu'); broadcast('stock', { alerts: [], by: null });
     return { ok: true, backup: backup.file };
   });
 
@@ -320,6 +328,7 @@ export function registerRoutes(r, cfg) {
     const id = enqueueTicket({ day_id: orders.currentDay()?.id ?? null, user_id: c.user.id, kind: 'test', content: { cafe: getSetting('cafe_name', 'Cafe') } });
     return { job_id: id };
   });
+  registerStockRoutes(r);
   r.get('/api/events', { roles: STAFF }, (c) => {
     c.res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     c.res.write('retry: 2000\n\nevent: hello\ndata: {}\n\n');

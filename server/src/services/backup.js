@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as sqlite from 'node:sqlite';
-import { db, dataDir, getSetting, setSetting, openDb, closeDb } from '../db.js';
+import { db, dataDir, getSetting, setSetting, openDb, closeDb, SCHEMA_VERSION } from '../db.js';
 import { now } from '../clock.js';
 import { HttpError, bad } from '../http.js';
 
@@ -104,6 +104,8 @@ export function saveUploaded(buffer) {
 export async function restoreBackup(name) {
   const file = fileOf(name);
   const summary = inspectFile(file);
+  // A backup from a newer version would stop this app from starting. Older ones are brought up to date on open.
+  if (summary.schema > SCHEMA_VERSION) throw bad('backup_newer', 'This backup was made by a newer Cafe POS. Update this app first.');
   const safety = await runBackup('before-restore');
   const live = path.join(dataDir, 'pos.db');
   // No await between closing and reopening: nothing else may run while there is no database.
